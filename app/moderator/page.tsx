@@ -5,10 +5,14 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import {
     getAllIncidents,
+    getIncidentsByZone,
     getSeverityScore,
     getAuthorityInstructions,
     getBroadcastHistory,
     createBroadcast,
+    getModeratorByUserId,
+    getAuthorityByUserId,
+    forwardIncidentToCrisis,
     IncidentReport,
     SeverityScore,
     AuthorityInstruction,
@@ -71,6 +75,10 @@ export default function ModeratorDashboard() {
     // Track locally acknowledged instructions
     const [acknowledgedInstructions, setAcknowledgedInstructions] = useState<Set<string>>(new Set());
 
+    // Moderator profile data
+    const [moderatorZone, setModeratorZone] = useState<string>("");
+    const [authorityName, setAuthorityName] = useState<string>("");
+
     // Protect route
     useEffect(() => {
         if (user && user.role !== "moderator") {
@@ -78,23 +86,38 @@ export default function ModeratorDashboard() {
         }
     }, [user, router]);
 
-    // Fetch data
+    // Fetch moderator profile and authority info
     useEffect(() => {
-        if (user && user.role === "moderator") {
-            loadData();
-        }
+        const fetchModeratorProfile = async () => {
+            if (user && user.role === "moderator") {
+                const profile = await getModeratorByUserId(user.uid);
+                if (profile) {
+                    setModeratorZone(profile.zone);
+                    // Fetch authority name using authorityId
+                    const authority = await getAuthorityByUserId(profile.authorityId);
+                    if (authority) {
+                        setAuthorityName(authority.authorityName);
+                    }
+                }
+            }
+        };
+        fetchModeratorProfile();
     }, [user]);
 
+    // Load data function
     const loadData = async () => {
         setIsLoading(true);
         try {
-            // Fetch incidents
-            const incidentData = await getAllIncidents();
-            setIncidents(incidentData);
+            // Fetch incidents by zone if moderator zone is available
+            const incidentsList = moderatorZone
+                ? await getIncidentsByZone(moderatorZone)
+                : await getAllIncidents(); // Fallback to all incidents if zone not yet loaded
+
+            setIncidents(incidentsList);
 
             // Fetch severity scores for each incident
             const scores = new Map<string, SeverityScore>();
-            for (const incident of incidentData) {
+            for (const incident of incidentsList) {
                 if (incident.id) {
                     const score = await getSeverityScore(incident.id);
                     if (score) {
@@ -115,6 +138,13 @@ export default function ModeratorDashboard() {
             setIsLoading(false);
         }
     };
+
+    // Fetch data when user or moderatorZone changes
+    useEffect(() => {
+        if (user && user.role === "moderator") {
+            loadData();
+        }
+    }, [user, moderatorZone]);
 
     const handleSendBroadcast = async () => {
         if (!broadcastMessage.trim() || !user) return;
@@ -184,7 +214,12 @@ export default function ModeratorDashboard() {
                     </h1>
                     <p className="text-sm text-gray-400">Moderator Panel</p>
                     <p className="text-xs text-blue-400 mt-2">👤 {user.name}</p>
-                    <p className="text-xs text-gray-500">📍 South Kerala Zone</p>
+                    {authorityName && (
+                        <p className="text-xs text-green-400 mt-1">🏢 {authorityName}</p>
+                    )}
+                    {moderatorZone && (
+                        <p className="text-xs text-purple-400">📍 {moderatorZone}</p>
+                    )}
                 </div>
 
                 <nav className="space-y-2">
@@ -305,9 +340,17 @@ export default function ModeratorDashboard() {
                                                 <div className="space-y-3">
                                                     <div className="flex gap-3">
                                                         <button
-                                                            onClick={() => {
-                                                                if (incident.id) {
-                                                                    setForwardedReports(prev => new Set(prev).add(incident.id!));
+                                                            onClick={async () => {
+                                                                if (incident.id && user) {
+                                                                    const result = await forwardIncidentToCrisis(
+                                                                        incident,
+                                                                        user.name
+                                                                    );
+                                                                    if (result.success) {
+                                                                        setForwardedReports(prev => new Set(prev).add(incident.id!));
+                                                                    } else {
+                                                                        alert("Failed to forward incident to authorities");
+                                                                    }
                                                                 }
                                                             }}
                                                             disabled={incident.id ? forwardedReports.has(incident.id) : false}

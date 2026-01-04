@@ -13,6 +13,7 @@ export interface IncidentReport {
     contactNumber: string;
     lat?: number;
     lng?: number;
+    zone?: string; // Auto-detected zone from coordinates
     status: "pending" | "verified" | "resolved";
     createdAt: string;
 }
@@ -72,8 +73,14 @@ export interface Broadcast {
 // Incident Reports
 export const createIncidentReport = async (report: Omit<IncidentReport, "id" | "createdAt" | "status">) => {
     try {
+        // Auto-detect zone from coordinates
+        const zone = report.lat && report.lng
+            ? detectZoneFromCoordinates(report.lat, report.lng)
+            : "Unknown Zone";
+
         const docRef = await addDoc(collection(db, "incidents"), {
             ...report,
+            zone, // Add detected zone
             status: "pending",
             createdAt: new Date().toISOString(),
         });
@@ -114,6 +121,26 @@ export const getAllIncidents = async () => {
         return incidents;
     } catch (error) {
         console.error("Error fetching all incidents:", error);
+        return [];
+    }
+};
+
+// Get incidents by zone for moderators
+export const getIncidentsByZone = async (zone: string) => {
+    try {
+        const q = query(
+            collection(db, "incidents"),
+            where("zone", "==", zone),
+            orderBy("createdAt", "desc")
+        );
+        const querySnapshot = await getDocs(q);
+        const incidents: IncidentReport[] = [];
+        querySnapshot.forEach((doc) => {
+            incidents.push({ id: doc.id, ...doc.data() } as IncidentReport);
+        });
+        return incidents;
+    } catch (error) {
+        console.error("Error fetching incidents by zone:", error);
         return [];
     }
 };
@@ -163,6 +190,55 @@ export const getVerifiedCrises = async () => {
     } catch (error) {
         console.error("Error fetching verified crises:", error);
         return [];
+    }
+};
+
+// Zone Detection - Automatically determine zone from coordinates
+export const detectZoneFromCoordinates = (lat: number, lng: number): string => {
+    // Kerala zones based on latitude ranges (approximate boundaries)
+    // North Kerala: Kasaragod to Kozhikode (around lat 11.0 - 12.9)
+    // Central Kerala: Thrissur to Kottayam (around lat 9.5 - 11.0)
+    // South Kerala: Thiruvananthapuram to Kollam (around lat 8.0 - 9.5)
+
+    if (lat >= 11.0) {
+        return "North Kerala Zone";
+    } else if (lat >= 9.5) {
+        return "Central Kerala Zone";
+    } else {
+        return "South Kerala Zone";
+    }
+};
+
+// Forward incident to crisis (for moderator forwarding to authorities)
+export const forwardIncidentToCrisis = async (
+    incident: IncidentReport,
+    moderatorName: string
+) => {
+    try {
+        const priority = incident.severity === "critical" ? "critical" : incident.severity === "high" ? "high" : "medium";
+
+        // Automatically detect zone from coordinates
+        const detectedZone = detectZoneFromCoordinates(incident.lat || 0, incident.lng || 0);
+
+        const crisisData: Omit<CrisisData, "id" | "createdAt"> = {
+            location: incident.location,
+            lat: incident.lat || 0,
+            lng: incident.lng || 0,
+            priority: priority,
+            crisisType: incident.incidentType,
+            affectedPeople: 0, // Can be updated later
+            zone: detectedZone, // Use auto-detected zone
+            zoneModerator: moderatorName,
+            crisisLevel: incident.severity || "medium",
+            status: "verified",
+            description: incident.description
+        };
+
+        const result = await createCrisisData(crisisData);
+        return result;
+    } catch (error) {
+        console.error("Error forwarding incident to crisis:", error);
+        return { success: false, error: "Failed to forward incident" };
     }
 };
 
@@ -261,6 +337,26 @@ export const getBroadcastHistory = async (moderatorId: string) => {
     }
 };
 
+// Get broadcasts by zone for users
+export const getBroadcastsByZone = async (zone: string) => {
+    try {
+        const q = query(
+            collection(db, "broadcasts"),
+            where("zone", "==", zone),
+            orderBy("createdAt", "desc")
+        );
+        const querySnapshot = await getDocs(q);
+        const broadcasts: Broadcast[] = [];
+        querySnapshot.forEach((doc) => {
+            broadcasts.push({ id: doc.id, ...doc.data() } as Broadcast);
+        });
+        return broadcasts;
+    } catch (error) {
+        console.error("Error fetching broadcasts by zone:", error);
+        return [];
+    }
+};
+
 // Authority Profiles
 export interface AuthorityProfile {
     id?: string;
@@ -298,4 +394,67 @@ export const getAllAuthorities = async () => {
         return [];
     }
 };
+
+export const getAuthorityByUserId = async (userId: string) => {
+    try {
+        const q = query(
+            collection(db, "authorities"),
+            where("userId", "==", userId)
+        );
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+            const doc = querySnapshot.docs[0];
+            return { id: doc.id, ...doc.data() } as AuthorityProfile;
+        }
+        return null;
+    } catch (error) {
+        console.error("Error fetching authority profile:", error);
+        return null;
+    }
+};
+
+// Moderator Profiles
+export interface ModeratorProfile {
+    id?: string;
+    userId: string;
+    moderatorName: string;
+    email: string;
+    name: string;
+    zone: string;
+    authorityId: string;
+    createdAt: string;
+}
+
+export const createModeratorProfile = async (profile: Omit<ModeratorProfile, "id" | "createdAt">) => {
+    try {
+        const docRef = await addDoc(collection(db, "moderators"), {
+            ...profile,
+            createdAt: new Date().toISOString(),
+        });
+        return { success: true, id: docRef.id };
+    } catch (error) {
+        console.error("Error creating moderator profile:", error);
+        return { success: false, error: "Failed to create moderator profile" };
+    }
+};
+
+export const getModeratorByUserId = async (userId: string) => {
+    try {
+        const q = query(
+            collection(db, "moderators"),
+            where("userId", "==", userId)
+        );
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+            const doc = querySnapshot.docs[0];
+            return { id: doc.id, ...doc.data() } as ModeratorProfile;
+        }
+        return null;
+    } catch (error) {
+        console.error("Error fetching moderator profile:", error);
+        return null;
+    }
+};
+
+
 

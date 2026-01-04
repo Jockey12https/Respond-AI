@@ -2,12 +2,16 @@
 
 import React, { useState, useEffect } from "react";
 import { ZonalStatus as ZonalStatusEnum } from "@/types";
+import { detectZoneFromCoordinates, getBroadcastsByZone, Broadcast } from "@/lib/firestore";
 
 const ZonalStatus: React.FC = () => {
     const [status, setStatus] = useState<ZonalStatusEnum>(ZonalStatusEnum.Alert);
     const [userLocation, setUserLocation] = useState<string>("Fetching location...");
     const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | null>(null);
     const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+    const [userZone, setUserZone] = useState<string>("");
+    const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
+    const [loadingBroadcasts, setLoadingBroadcasts] = useState(false);
 
     // Fetch user's location
     const fetchUserLocation = async () => {
@@ -58,6 +62,20 @@ const ZonalStatus: React.FC = () => {
         }
     };
 
+    // Fetch broadcasts for user's zone
+    const fetchZoneBroadcasts = async (zone: string) => {
+        if (!zone) return;
+        setLoadingBroadcasts(true);
+        try {
+            const zoneBroadcasts = await getBroadcastsByZone(zone);
+            setBroadcasts(zoneBroadcasts);
+        } catch (error) {
+            console.error("Error fetching zone broadcasts:", error);
+        } finally {
+            setLoadingBroadcasts(false);
+        }
+    };
+
     // Initial fetch
     useEffect(() => {
         fetchUserLocation();
@@ -65,10 +83,22 @@ const ZonalStatus: React.FC = () => {
         // Update every 30 seconds
         const interval = setInterval(() => {
             fetchUserLocation();
+            if (userZone) {
+                fetchZoneBroadcasts(userZone);
+            }
         }, 30000); // 30 seconds
 
         return () => clearInterval(interval);
-    }, []);
+    }, [userZone]);
+
+    // Detect zone and fetch broadcasts when coordinates change
+    useEffect(() => {
+        if (coordinates) {
+            const zone = detectZoneFromCoordinates(coordinates.lat, coordinates.lng);
+            setUserZone(zone);
+            fetchZoneBroadcasts(zone);
+        }
+    }, [coordinates]);
 
     const getStatusColor = (status: ZonalStatusEnum) => {
         switch (status) {
@@ -215,6 +245,67 @@ const ZonalStatus: React.FC = () => {
                             </li>
                         ))}
                     </ul>
+                </div>
+
+                {/* Zonal Alerts & Broadcasts */}
+                <div className="glass rounded-2xl p-6 mb-6">
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                        <span>📢</span> Zonal Alerts & Broadcasts
+                    </h3>
+                    {loadingBroadcasts ? (
+                        <div className="text-center text-gray-400 py-4">
+                            <span className="animate-pulse">Loading broadcasts...</span>
+                        </div>
+                    ) : broadcasts.length > 0 ? (
+                        <div className="space-y-3">
+                            {broadcasts.map((broadcast) => {
+                                const typeColors = {
+                                    alert: "bg-red-500/20 border-red-500/50 text-red-400",
+                                    warning: "bg-yellow-500/20 border-yellow-500/50 text-yellow-400",
+                                    info: "bg-blue-500/20 border-blue-500/50 text-blue-400",
+                                };
+                                const typeIcons = {
+                                    alert: "🚨",
+                                    warning: "⚠️",
+                                    info: "ℹ️",
+                                };
+                                return (
+                                    <div
+                                        key={broadcast.id}
+                                        className={`glass-dark rounded-lg p-4 border-l-4 ${typeColors[broadcast.type]}`}
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <span className="text-2xl">{typeIcons[broadcast.type]}</span>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded ${typeColors[broadcast.type]}`}>
+                                                        {broadcast.type}
+                                                    </span>
+                                                    <span className="text-xs text-gray-500">
+                                                        {new Date(broadcast.createdAt).toLocaleString()}
+                                                    </span>
+                                                </div>
+                                                <p className="text-gray-300 mb-2">{broadcast.message}</p>
+                                                <p className="text-xs text-gray-500">
+                                                    From: {broadcast.moderatorName} • {broadcast.zone}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8">
+                            <div className="text-4xl mb-3">✅</div>
+                            <p className="text-gray-400">
+                                No active alerts or broadcasts for {userZone || "your zone"}
+                            </p>
+                            <p className="text-sm text-gray-500 mt-1">
+                                You'll be notified when moderators send updates
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Emergency Services Grid */}

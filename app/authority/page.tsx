@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import dynamic from "next/dynamic";
-import { MOCK_CRISIS_DATA } from "@/components/AuthorityCrisisMap";
+import { getAuthorityByUserId, getAllCrises, CrisisData } from "@/lib/firestore";
 
 // Dynamically import map components to avoid SSR issues with Leaflet
 const AuthorityCrisisMap = dynamic(
@@ -30,8 +30,10 @@ const MOCK_USERS = [
 export default function AuthorityDashboard() {
     const router = useRouter();
     const { user, logout } = useAuth();
-    const [selectedCrisis, setSelectedCrisis] = useState<typeof MOCK_CRISIS_DATA[0] | null>(null);
+    const [selectedCrisis, setSelectedCrisis] = useState<CrisisData | null>(null);
     const [showUserList, setShowUserList] = useState(false);
+    const [authorityName, setAuthorityName] = useState<string>("");
+    const [crises, setCrises] = useState<CrisisData[]>([]);
 
     // Protect route - only authorities can access
     React.useEffect(() => {
@@ -39,6 +41,28 @@ export default function AuthorityDashboard() {
             router.push("/dashboard");
         }
     }, [user, router]);
+
+    // Fetch authority profile to get authority name
+    React.useEffect(() => {
+        const fetchAuthorityProfile = async () => {
+            if (user && user.role === "authority") {
+                const profile = await getAuthorityByUserId(user.uid);
+                if (profile) {
+                    setAuthorityName(profile.authorityName);
+                }
+            }
+        };
+        fetchAuthorityProfile();
+    }, [user]);
+
+    // Fetch crises from Firebase
+    React.useEffect(() => {
+        const fetchCrises = async () => {
+            const fetchedCrises = await getAllCrises();
+            setCrises(fetchedCrises);
+        };
+        fetchCrises();
+    }, []);
 
     if (!user || user.role !== "authority") {
         return (
@@ -77,6 +101,9 @@ export default function AuthorityDashboard() {
                         </p>
                     </div>
                     <div className="flex items-center gap-4">
+                        {authorityName && (
+                            <p className="text-red-400 font-bold text-lg">| {authorityName}</p>
+                        )}
                         <button
                             onClick={() => {
                                 logout();
@@ -167,13 +194,17 @@ export default function AuthorityDashboard() {
                                     ● LIVE
                                 </span>
                                 <span className="text-sm text-gray-400">
-                                    {MOCK_CRISIS_DATA.length} Active Crises
+                                    {crises.length} Active Crises
                                 </span>
                             </div>
                         </div>
 
                         <div className="h-[calc(100%-4rem)] rounded-xl overflow-hidden border-2 border-white/10">
-                            <AuthorityCrisisMap onCrisisSelect={setSelectedCrisis} />
+                            <AuthorityCrisisMap
+                                onCrisisSelect={setSelectedCrisis}
+                                zoneFilter={authorityName}
+                                crises={crises}
+                            />
                         </div>
                     </div>
                 )}

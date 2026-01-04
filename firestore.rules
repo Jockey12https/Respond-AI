@@ -77,5 +77,16 @@ service cloud.firestore {
       allow update: if isAuthenticated();
       allow delete: if false;
     }
+    
+    // Moderators collection - For moderator profiles
+    match /moderators/{moderatorId} {
+      // Moderators can create their profile
+      allow create: if isAuthenticated();
+      // Everyone authenticated can read moderators
+      allow read: if isAuthenticated();
+      // Only the moderator themselves can update their profile
+      allow update: if isAuthenticated();
+      allow delete: if false;
+    }
   }
 }

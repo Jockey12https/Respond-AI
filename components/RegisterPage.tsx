@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, UserRole } from "@/context/AuthContext";
-import { getAllAuthorities, createAuthorityProfile, AuthorityProfile } from "@/lib/firestore";
+import { getAllAuthorities, createAuthorityProfile, createModeratorProfile, AuthorityProfile } from "@/lib/firestore";
 
 const RegisterPage: React.FC = () => {
     const router = useRouter();
@@ -17,6 +17,7 @@ const RegisterPage: React.FC = () => {
         masterKey: "",
         authorityName: "", // For authority registration
         selectedAuthority: "", // For moderator registration
+        zoneName: "", // For moderator zone
         agreeToTerms: false,
     });
     const [error, setError] = useState("");
@@ -67,6 +68,11 @@ const RegisterPage: React.FC = () => {
             return;
         }
 
+        if (formData.role === "moderator" && !formData.zoneName.trim()) {
+            setError("Zone name is required for moderators");
+            return;
+        }
+
         setIsLoading(true);
 
         try {
@@ -85,6 +91,18 @@ const RegisterPage: React.FC = () => {
                         authorityName: formData.authorityName,
                         email: formData.email,
                         name: formData.name
+                    });
+                }
+
+                // If moderator, save moderator profile
+                if (formData.role === "moderator" && result.userId) {
+                    await createModeratorProfile({
+                        userId: result.userId,
+                        moderatorName: formData.name,
+                        email: formData.email,
+                        name: formData.name,
+                        zone: formData.zoneName,
+                        authorityId: formData.selectedAuthority
                     });
                 }
 
@@ -203,27 +221,44 @@ const RegisterPage: React.FC = () => {
 
                         {/* Authority Selection (for moderator role) */}
                         {formData.role === "moderator" && (
-                            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                                <label className="block text-sm font-medium mb-2">
-                                    👮 Select Your Authority
-                                </label>
-                                <select
-                                    value={formData.selectedAuthority}
-                                    onChange={(e) => setFormData({ ...formData, selectedAuthority: e.target.value })}
-                                    className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                                    required
-                                >
-                                    <option value="">Select an authority...</option>
-                                    {authorities.map((auth) => (
-                                        <option key={auth.id} value={auth.id}>
-                                            {auth.authorityName}
-                                        </option>
-                                    ))}
-                                </select>
-                                {authorities.length === 0 && (
-                                    <p className="text-xs text-yellow-400 mt-2">⚠️ No authorities registered yet. Contact your administrator.</p>
-                                )}
-                            </div>
+                            <>
+                                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                                    <label className="block text-sm font-medium mb-2">
+                                        👮 Select Your Authority
+                                    </label>
+                                    <select
+                                        value={formData.selectedAuthority}
+                                        onChange={(e) => setFormData({ ...formData, selectedAuthority: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                                        required
+                                    >
+                                        <option value="">Select an authority...</option>
+                                        {authorities.map((auth) => (
+                                            <option key={auth.id} value={auth.id}>
+                                                {auth.authorityName}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {authorities.length === 0 && (
+                                        <p className="text-xs text-yellow-400 mt-2">⚠️ No authorities registered yet. Contact your administrator.</p>
+                                    )}
+                                </div>
+
+                                <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg p-4">
+                                    <label className="block text-sm font-medium mb-2">
+                                        📍 Zone Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.zoneName}
+                                        onChange={(e) => setFormData({ ...formData, zoneName: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
+                                        placeholder="e.g., North Kerala Zone, South Kerala Zone"
+                                        required
+                                    />
+                                    <p className="text-xs text-gray-400 mt-2">Enter the zone you will be moderating</p>
+                                </div>
+                            </>
                         )}
 
                         {/* Password */}
