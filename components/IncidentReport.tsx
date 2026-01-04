@@ -4,14 +4,19 @@ import React, { useState, useEffect, useRef } from "react";
 import { IncidentType, Location } from "@/types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { useAuth } from "@/context/AuthContext";
+import { createIncidentReport } from "@/lib/firestore";
 
 const IncidentReport: React.FC = () => {
+    const { user } = useAuth();
     const [formData, setFormData] = useState({
         type: IncidentType.Other,
         description: "",
         location: { lat: 28.6139, lng: 77.2090, address: "" } as Location,
+        contactNumber: "",
     });
     const [submitted, setSubmitted] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [mapInitialized, setMapInitialized] = useState(false);
     const mapRef = useRef<HTMLDivElement>(null);
@@ -193,24 +198,57 @@ const IncidentReport: React.FC = () => {
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log("Incident reported:", formData);
-        setSubmitted(true);
-        setTimeout(() => {
-            setSubmitted(false);
-            setSearchQuery("");
-            setFormData({
-                type: IncidentType.Other,
-                description: "",
-                location: { lat: 28.6139, lng: 77.2090, address: "" },
+
+        if (!user) {
+            alert("You must be logged in to submit a report");
+            return;
+        }
+
+        setIsSubmitting(true);
+
+        try {
+            // Save to Firebase Firestore
+            const result = await createIncidentReport({
+                userId: user.uid,
+                userEmail: user.email,
+                userName: user.name,
+                incidentType: formData.type,
+                location: formData.location.address || `${formData.location.lat}, ${formData.location.lng}`,
+                description: formData.description,
+                contactNumber: formData.contactNumber,
+                lat: formData.location.lat,
+                lng: formData.location.lng,
             });
-            if (mapInstanceRef.current && markerRef.current && circleRef.current) {
-                mapInstanceRef.current.setView([28.6139, 77.2090], 11);
-                markerRef.current.setLatLng([28.6139, 77.2090]);
-                circleRef.current.setLatLng([28.6139, 77.2090]);
+
+            if (result.success) {
+                console.log("Incident reported successfully:", result.id);
+                setSubmitted(true);
+                setTimeout(() => {
+                    setSubmitted(false);
+                    setSearchQuery("");
+                    setFormData({
+                        type: IncidentType.Other,
+                        description: "",
+                        location: { lat: 28.6139, lng: 77.2090, address: "" },
+                        contactNumber: "",
+                    });
+                    if (mapInstanceRef.current && markerRef.current && circleRef.current) {
+                        mapInstanceRef.current.setView([28.6139, 77.2090], 11);
+                        markerRef.current.setLatLng([28.6139, 77.2090]);
+                        circleRef.current.setLatLng([28.6139, 77.2090]);
+                    }
+                }, 3000);
+            } else {
+                alert(result.error || "Failed to submit report. Please try again.");
             }
-        }, 3000);
+        } catch (error) {
+            console.error("Error submitting report:", error);
+            alert("An error occurred while submitting your report. Please try again.");
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -270,6 +308,22 @@ const IncidentReport: React.FC = () => {
                                 className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all resize-none"
                                 placeholder="Provide as much detail as possible about the incident..."
                                 required
+                            />
+                        </div>
+
+                        {/* Contact Number */}
+                        <div className="glass rounded-2xl p-6">
+                            <label className="block text-sm font-medium mb-2">
+                                Contact Number <span className="text-gray-500">(if assistance required)</span>
+                            </label>
+                            <input
+                                type="tel"
+                                value={formData.contactNumber}
+                                onChange={(e) =>
+                                    setFormData({ ...formData, contactNumber: e.target.value })
+                                }
+                                className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                                placeholder="+91 98765 43210 (optional)"
                             />
                         </div>
 
@@ -346,9 +400,10 @@ const IncidentReport: React.FC = () => {
                         {/* Submit Button */}
                         <button
                             type="submit"
-                            className="w-full py-4 px-6 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-lg font-bold text-lg shadow-lg transition-all duration-300 transform hover:scale-105"
+                            disabled={isSubmitting}
+                            className="w-full py-4 px-6 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-bold text-lg shadow-lg transition-all duration-300 transform hover:scale-105 disabled:hover:scale-100"
                         >
-                            Submit Report
+                            {isSubmitting ? "Submitting..." : "Submit Report"}
                         </button>
                     </form>
                 )}

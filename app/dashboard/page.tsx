@@ -9,7 +9,8 @@ import IncidentReport from "@/components/IncidentReport";
 import AlertsNotifications from "@/components/AlertsNotifications";
 import CrisisMap from "@/components/CrisisMap";
 import ZonalStatus from "@/components/ZonalStatus";
-import { ViewType } from "@/types";
+import EmergencyAssistant from "@/components/EmergencyAssistant";
+import { ViewType, IncidentType } from "@/types";
 import { mockAlerts } from "@/lib/mockData";
 
 export default function Dashboard() {
@@ -18,6 +19,8 @@ export default function Dashboard() {
     const [activeView, setActiveView] = useState<ViewType>("report");
     const [showSOSModal, setShowSOSModal] = useState(false);
     const [showSOSConfirmation, setShowSOSConfirmation] = useState(false);
+    const [showEmergencyAssistant, setShowEmergencyAssistant] = useState(false);
+    const [selectedIncidentType, setSelectedIncidentType] = useState<IncidentType>(IncidentType.Other);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -34,8 +37,8 @@ export default function Dashboard() {
 
         setTimeout(() => {
             setShowSOSConfirmation(false);
-            setActiveView("report");
-        }, 5000);
+            setShowEmergencyAssistant(true);
+        }, 3000);
     };
 
     const renderContent = () => {
@@ -115,31 +118,42 @@ export default function Dashboard() {
                                     location has been shared with emergency responders.
                                 </p>
                             </div>
-                            <p className="text-gray-400 mb-4">
-                                Help is on the way. Please stay safe and report the incident for faster
-                                response.
-                            </p>
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => setShowSOSConfirmation(false)}
-                                    className="flex-1 py-3 px-6 rounded-lg glass hover:bg-white/20 font-medium transition-all duration-300"
+                            
+                            {/* Incident Type Selection */}
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                    What type of emergency?
+                                </label>
+                                <select
+                                    value={selectedIncidentType}
+                                    onChange={(e) => setSelectedIncidentType(e.target.value as IncidentType)}
+                                    className="w-full glass rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
-                                    Close
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setShowSOSConfirmation(false);
-                                        setActiveView("report");
-                                    }}
-                                    className="flex-1 py-3 px-6 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 font-bold transition-all duration-300"
-                                >
-                                    Report Incident
-                                </button>
+                                    {Object.values(IncidentType).map((type) => (
+                                        <option key={type} value={type} className="bg-gray-800">
+                                            {type}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
+                            
+                            <p className="text-gray-400 mb-4 text-sm">
+                                🤖 Our AI assistant will provide immediate safety guidance while help is on the way.
+                            </p>
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* Emergency AI Assistant */}
+            <EmergencyAssistant
+                isOpen={showEmergencyAssistant}
+                onClose={() => {
+                    setShowEmergencyAssistant(false);
+                    setActiveView("report");
+                }}
+                incidentType={selectedIncidentType}
+            />
         </main>
     );
 }

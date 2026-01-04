@@ -36,7 +36,14 @@ const LoginPage: React.FC = () => {
                 formData.masterKey || undefined
             );
             if (result.success) {
-                router.push("/dashboard");
+                // Redirect based on user role
+                if (formData.role === "moderator") {
+                    router.push("/moderator");
+                } else if (formData.role === "authority") {
+                    router.push("/authority");
+                } else {
+                    router.push("/dashboard");
+                }
             } else {
                 setError(result.error || "Invalid credentials. Please try again.");
             }

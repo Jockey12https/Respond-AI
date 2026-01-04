@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, UserRole } from "@/context/AuthContext";
+import { getAllAuthorities, createAuthorityProfile, AuthorityProfile } from "@/lib/firestore";
 
 const RegisterPage: React.FC = () => {
     const router = useRouter();
@@ -14,10 +15,22 @@ const RegisterPage: React.FC = () => {
         confirmPassword: "",
         role: "user" as UserRole,
         masterKey: "",
+        authorityName: "", // For authority registration
+        selectedAuthority: "", // For moderator registration
         agreeToTerms: false,
     });
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [authorities, setAuthorities] = useState<AuthorityProfile[]>([]);
+
+    // Fetch authorities for moderator selection
+    useEffect(() => {
+        const fetchAuthorities = async () => {
+            const authList = await getAllAuthorities();
+            setAuthorities(authList);
+        };
+        fetchAuthorities();
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -44,6 +57,16 @@ const RegisterPage: React.FC = () => {
             return;
         }
 
+        if (formData.role === "authority" && !formData.authorityName.trim()) {
+            setError("Authority name is required");
+            return;
+        }
+
+        if (formData.role === "moderator" && !formData.selectedAuthority) {
+            setError("Please select an authority");
+            return;
+        }
+
         setIsLoading(true);
 
         try {
@@ -55,7 +78,24 @@ const RegisterPage: React.FC = () => {
                 formData.masterKey || undefined
             );
             if (result.success) {
-                router.push("/dashboard");
+                // If authority, save authority profile
+                if (formData.role === "authority" && result.userId) {
+                    await createAuthorityProfile({
+                        userId: result.userId,
+                        authorityName: formData.authorityName,
+                        email: formData.email,
+                        name: formData.name
+                    });
+                }
+
+                // Redirect based on role
+                if (formData.role === "moderator") {
+                    router.push("/moderator");
+                } else if (formData.role === "authority") {
+                    router.push("/authority");
+                } else {
+                    router.push("/dashboard");
+                }
             } else {
                 setError(result.error || "Registration failed. Please try again.");
             }
@@ -140,6 +180,49 @@ const RegisterPage: React.FC = () => {
                                     placeholder="Enter master key for verification"
                                     required
                                 />
+                            </div>
+                        )}
+
+                        {/* Authority Name (for authority role) */}
+                        {formData.role === "authority" && (
+                            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                                <label className="block text-sm font-medium mb-2">
+                                    🏢 Authority Name/Organization
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.authorityName}
+                                    onChange={(e) => setFormData({ ...formData, authorityName: e.target.value })}
+                                    className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all"
+                                    placeholder="e.g., Kerala Disaster Management Authority"
+                                    required
+                                />
+                                <p className="text-xs text-gray-400 mt-2">This name will be visible to moderators</p>
+                            </div>
+                        )}
+
+                        {/* Authority Selection (for moderator role) */}
+                        {formData.role === "moderator" && (
+                            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                                <label className="block text-sm font-medium mb-2">
+                                    👮 Select Your Authority
+                                </label>
+                                <select
+                                    value={formData.selectedAuthority}
+                                    onChange={(e) => setFormData({ ...formData, selectedAuthority: e.target.value })}
+                                    className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                                    required
+                                >
+                                    <option value="">Select an authority...</option>
+                                    {authorities.map((auth) => (
+                                        <option key={auth.id} value={auth.id}>
+                                            {auth.authorityName}
+                                        </option>
+                                    ))}
+                                </select>
+                                {authorities.length === 0 && (
+                                    <p className="text-xs text-yellow-400 mt-2">⚠️ No authorities registered yet. Contact your administrator.</p>
+                                )}
                             </div>
                         )}
 

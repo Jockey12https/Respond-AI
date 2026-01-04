@@ -92,11 +92,11 @@ const MOCK_CRISIS_DATA = [
     },
 ];
 
-interface ModeratorCrisisMapProps {
+interface AuthorityCrisisMapProps {
     onCrisisSelect?: (crisis: typeof MOCK_CRISIS_DATA[0]) => void;
 }
 
-const ModeratorCrisisMap: React.FC<ModeratorCrisisMapProps> = ({ onCrisisSelect }) => {
+const AuthorityCrisisMap: React.FC<AuthorityCrisisMapProps> = ({ onCrisisSelect }) => {
     const [map, setMap] = useState<L.Map | null>(null);
     const [selectedCrisis, setSelectedCrisis] = useState<typeof MOCK_CRISIS_DATA[0] | null>(null);
 
@@ -255,4 +255,4 @@ const ModeratorCrisisMap: React.FC<ModeratorCrisisMapProps> = ({ onCrisisSelect 
 };
 
 export { MOCK_CRISIS_DATA };
-export default ModeratorCrisisMap;
+export default AuthorityCrisisMap;

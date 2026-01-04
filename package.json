@@ -9,7 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@types/leaflet-routing-machine": "^3.2.9",
+    "firebase": "^12.7.0",
     "leaflet": "^1.9.4",
     "leaflet-routing-machine": "^3.2.12",
     "next": "^15.1.6",

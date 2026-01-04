@@ -21,52 +21,66 @@ const CrisisMap: React.FC = () => {
     const [showMarkers, setShowMarkers] = useState(true);
 
     useEffect(() => {
-        if (!mapRef.current || mapInstanceRef.current) return;
+        if (!mapRef.current) return;
 
-        // Initialize map centered on Delhi, India
-        const map = L.map(mapRef.current).setView([28.6139, 77.2090], 12);
+        const timer = setTimeout(() => {
+            try {
+                // Initialize map
+                const map = L.map(mapRef.current!, {
+                    center: [20.5937, 78.9629], // Center of India
+                    zoom: 5,
+                });
 
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            attribution: "© OpenStreetMap contributors",
-            maxZoom: 19,
-        }).addTo(map);
+                L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                    attribution: "© OpenStreetMap contributors",
+                }).addTo(map);
 
-        mapInstanceRef.current = map;
+                // Get user's location
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            const userPos: [number, number] = [
+                                position.coords.latitude,
+                                position.coords.longitude,
+                            ];
 
-        // Try to get user's location
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const userPos: [number, number] = [
-                        position.coords.latitude,
-                        position.coords.longitude,
-                    ];
-                    setUserLocation(userPos);
+                            // Only add marker if map is still valid
+                            if (map && mapRef.current) {
+                                L.marker(userPos, {
+                                    icon: L.divIcon({
+                                        html: '<div style="font-size: 30px;">📍</div>',
+                                        className: "user-marker",
+                                        iconSize: [30, 30],
+                                        iconAnchor: [15, 30],
+                                    }),
+                                })
+                                    .addTo(map)
+                                    .bindPopup("<b>Your Location</b>");
 
-                    // Add user location marker
-                    L.marker(userPos, {
-                        icon: L.divIcon({
-                            html: '<div class="text-3xl">📍</div>',
-                            className: "user-location-marker",
-                            iconSize: [40, 40],
-                        }),
-                    })
-                        .addTo(map)
-                        .bindPopup("<b>Your Location</b>");
-
-                    map.setView(userPos, 13);
-                },
-                (error) => {
-                    console.log("Geolocation error:", error);
-                    // Default to Delhi if geolocation fails
-                    setUserLocation([28.6139, 77.2090]);
+                                map.setView(userPos, 13);
+                            }
+                        },
+                        (error) => {
+                            console.log("Location access denied:", error);
+                        }
+                    );
                 }
-            );
-        } else {
-            setUserLocation([28.6139, 77.2090]);
-        }
+
+                mapInstanceRef.current = map;
+
+                // Force refresh
+                setTimeout(() => {
+                    if (map) {
+                        map.invalidateSize();
+                    }
+                }, 100);
+            } catch (error) {
+                console.error("Map initialization error:", error);
+            }
+        }, 100);
 
         return () => {
+            clearTimeout(timer);
             if (mapInstanceRef.current) {
                 mapInstanceRef.current.remove();
                 mapInstanceRef.current = null;
@@ -219,8 +233,8 @@ const CrisisMap: React.FC = () => {
                     <button
                         onClick={() => setShowMarkers(!showMarkers)}
                         className={`px-6 py-3 rounded-lg font-medium transition-all duration-300 ${showMarkers
-                                ? "bg-blue-600 shadow-lg"
-                                : "glass opacity-50 hover:opacity-100"
+                            ? "bg-blue-600 shadow-lg"
+                            : "glass opacity-50 hover:opacity-100"
                             }`}
                     >
                         🏥 Emergency Centres

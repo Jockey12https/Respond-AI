@@ -1,0 +1,81 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check user role
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Incidents collection
+    match /incidents/{incidentId} {
+      // Anyone authenticated can create an incident
+      allow create: if isAuthenticated();
+      // Users can read their own incidents
+      allow read: if isAuthenticated();
+      // Moderators and authorities can update incidents
+      allow update: if isAuthenticated();
+      allow delete: if false; // No one can delete incidents
+    }
+    
+    // Crises collection
+    match /crises/{crisisId} {
+      // Authorities can create crises
+      allow create: if isAuthenticated();
+      // Everyone can read crises
+      allow read: if isAuthenticated();
+      // Authorities can update crises
+      allow update: if isAuthenticated();
+      allow delete: if false;
+    }
+    
+    // Severity scores collection
+    match /severityScores/{scoreId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    
+    // Authority instructions collection
+    match /authorityInstructions/{instructionId} {
+      // Authorities can create instructions
+      allow create: if isAuthenticated();
+      // Moderators can read and update their instructions
+      allow read: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if false;
+    }
+    
+    // Broadcasts collection - THIS IS THE KEY FIX
+    match /broadcasts/{broadcastId} {
+      // Moderators can create broadcasts
+      allow create: if isAuthenticated();
+      // Everyone can read broadcasts
+      allow read: if isAuthenticated();
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Authorities collection - For authority profiles
+    match /authorities/{authorityId} {
+      // Authorities can create their profile
+      allow create: if isAuthenticated();
+      // Everyone authenticated can read authorities (for moderator selection)
+      allow read: if isAuthenticated();
+      // Only the authority themselves can update their profile
+      allow update: if isAuthenticated();
+      allow delete: if false;
+    }
+  }
+}
