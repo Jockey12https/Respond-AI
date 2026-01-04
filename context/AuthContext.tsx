@@ -29,12 +29,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
+        // Mark component as mounted (client-side only)
+        setIsMounted(true);
+
         // Check if user is logged in (from localStorage)
-        const storedUser = localStorage.getItem("respond_user");
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
+        if (typeof window !== "undefined") {
+            const storedUser = localStorage.getItem("respond_user");
+            if (storedUser) {
+                try {
+                    setUser(JSON.parse(storedUser));
+                } catch (e) {
+                    // Clear invalid stored data
+                    localStorage.removeItem("respond_user");
+                }
+            }
         }
         setIsLoading(false);
     }, []);
@@ -61,7 +72,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 role,
             };
             setUser(userData);
-            localStorage.setItem("respond_user", JSON.stringify(userData));
+            if (typeof window !== "undefined") {
+                localStorage.setItem("respond_user", JSON.stringify(userData));
+            }
             return { success: true };
         }
         return { success: false, error: "Invalid credentials" };
@@ -86,7 +99,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (name && email && password) {
             const userData = { email, name, role };
             setUser(userData);
-            localStorage.setItem("respond_user", JSON.stringify(userData));
+            if (typeof window !== "undefined") {
+                localStorage.setItem("respond_user", JSON.stringify(userData));
+            }
             return { success: true };
         }
         return { success: false, error: "Registration failed" };
@@ -94,12 +109,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const logout = () => {
         setUser(null);
-        localStorage.removeItem("respond_user");
+        if (typeof window !== "undefined") {
+            localStorage.removeItem("respond_user");
+        }
     };
 
-    if (isLoading) {
+    if (isLoading || !isMounted) {
         return (
-            <div className="h-screen w-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+            <div
+                className="h-screen w-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900"
+                suppressHydrationWarning
+            >
                 <div className="text-center">
                     <div className="text-6xl mb-4 animate-pulse">🚨</div>
                     <p className="text-gray-400">Loading...</p>

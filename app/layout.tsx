@@ -16,7 +16,7 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en">
+        <html lang="en" suppressHydrationWarning>
             <head>
                 <link
                     rel="stylesheet"
@@ -25,7 +25,7 @@ export default function RootLayout({
                     crossOrigin=""
                 />
             </head>
-            <body className={inter.className}>
+            <body className={inter.className} suppressHydrationWarning>
                 <AuthProvider>{children}</AuthProvider>
             </body>
         </html>

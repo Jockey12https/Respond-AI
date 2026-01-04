@@ -140,9 +140,6 @@ const RegisterPage: React.FC = () => {
                                     placeholder="Enter master key for verification"
                                     required
                                 />
-                                <p className="text-xs text-gray-400 mt-2">
-                                    💡 Demo keys: <span className="text-blue-400 font-mono">MOD2026KEY</span> (moderator) or <span className="text-blue-400 font-mono">AUTH2026KEY</span> (authority)
-                                </p>
                             </div>
                         )}
 

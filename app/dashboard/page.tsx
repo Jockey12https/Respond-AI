@@ -22,8 +22,11 @@ export default function Dashboard() {
     useEffect(() => {
         if (!isAuthenticated) {
             router.push("/");
+        } else if (user?.role === "authority") {
+            // Redirect authorities to their specialized dashboard
+            router.push("/authority");
         }
-    }, [isAuthenticated, router]);
+    }, [isAuthenticated, user, router]);
 
     const handleSOSConfirm = () => {
         setShowSOSModal(false);
