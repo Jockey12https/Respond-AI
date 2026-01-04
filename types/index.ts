@@ -11,8 +11,14 @@ export interface Incident {
 export enum IncidentType {
     Fire = "Fire",
     Flood = "Flood",
+    Earthquake = "Earthquake",
     Accident = "Accident",
-    Medical = "Medical",
+    Medical = "Medical Emergency",
+    Violence = "Violence/Assault",
+    GasLeak = "Gas Leak",
+    BuildingCollapse = "Building Collapse",
+    Riot = "Riot/Public Disturbance",
+    Kidnapping = "Kidnapping/Missing Person",
     Other = "Other",
 }
 

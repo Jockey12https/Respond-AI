@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-    title: "Crisis Response System",
-    description: "Real-time emergency and crisis management platform",
+    title: "Respond.AI - Emergency Response System",
+    description: "India's First AI-Powered Emergency Platform",
 };
 
 export default function RootLayout({
@@ -24,7 +25,9 @@ export default function RootLayout({
                     crossOrigin=""
                 />
             </head>
-            <body className={inter.className}>{children}</body>
+            <body className={inter.className}>
+                <AuthProvider>{children}</AuthProvider>
+            </body>
         </html>
     );
 }
