@@ -1,5 +1,33 @@
-import { collection, addDoc, getDocs, query, where, orderBy, Timestamp } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "./firebase";
+
+// Kerala Regional Authorities and District Mapping
+export const KERALA_AUTHORITIES = {
+    "North Kerala": ["Kasaragod", "Kannur", "Kozhikode", "Wayanad"],
+    "South Kerala": ["Thiruvananthapuram", "Kollam", "Pathanamthitta", "Alappuzha"],
+    "East Kerala": ["Idukki", "Kottayam"],
+    "West Kerala": ["Thrissur", "Palakkad", "Malappuram", "Ernakulam"]
+} as const;
+
+// Get all authority names
+export const getAuthorityNames = (): string[] => {
+    return Object.keys(KERALA_AUTHORITIES);
+};
+
+// Get districts for a specific authority
+export const getDistrictsForAuthority = (authorityName: string): readonly string[] => {
+    return KERALA_AUTHORITIES[authorityName as keyof typeof KERALA_AUTHORITIES] || [];
+};
+
+// Get authority name for a given district
+export const getAuthorityForDistrict = (district: string): string | null => {
+    for (const [authority, districts] of Object.entries(KERALA_AUTHORITIES)) {
+        if (districts.includes(district)) {
+            return authority;
+        }
+    }
+    return null;
+};
 
 export interface IncidentReport {
     id?: string;
@@ -20,18 +48,20 @@ export interface IncidentReport {
 
 export interface CrisisData {
     id?: string;
+    incidentId?: string; // Link to original incident
     location: string;
     lat: number;
     lng: number;
-    priority: "critical" | "high" | "medium";
+    priority: string;
     crisisType: string;
     affectedPeople: number;
-    zone: string;
+    zone: string; // District name
+    authorityName: string; // Regional authority (North/South/East/West Kerala)
     zoneModerator: string;
     crisisLevel: string;
     status: string;
     description: string;
-    createdAt: string;
+    createdAt?: string;
 }
 
 export interface SeverityScore {
@@ -43,6 +73,18 @@ export interface SeverityScore {
     factors: string[];
     modelVersion: string;
     createdAt: string;
+}
+
+export interface AuthorityAlert {
+    id?: string;
+    authorityId: string;
+    authorityName: string;
+    zone: string;
+    title: string;
+    message: string;
+    type: "critical" | "warning" | "info";
+    createdAt: string;
+    expiresAt?: string;
 }
 
 export interface AuthorityInstruction {
@@ -73,14 +115,14 @@ export interface Broadcast {
 // Incident Reports
 export const createIncidentReport = async (report: Omit<IncidentReport, "id" | "createdAt" | "status">) => {
     try {
-        // Auto-detect zone from coordinates
+        // Auto-detect zone/district from coordinates
         const zone = report.lat && report.lng
-            ? detectZoneFromCoordinates(report.lat, report.lng)
-            : "Unknown Zone";
+            ? await detectZoneFromCoordinates(report.lat, report.lng)
+            : "Unknown District";
 
         const docRef = await addDoc(collection(db, "incidents"), {
             ...report,
-            zone, // Add detected zone
+            zone, // Add detected district
             status: "pending",
             createdAt: new Date().toISOString(),
         });
@@ -112,7 +154,11 @@ export const getUserIncidents = async (userId: string) => {
 
 export const getAllIncidents = async () => {
     try {
-        const q = query(collection(db, "incidents"), orderBy("createdAt", "desc"));
+        const q = query(
+            collection(db, "incidents"),
+            where("status", "==", "pending"),
+            orderBy("createdAt", "desc")
+        );
         const querySnapshot = await getDocs(q);
         const incidents: IncidentReport[] = [];
         querySnapshot.forEach((doc) => {
@@ -125,12 +171,13 @@ export const getAllIncidents = async () => {
     }
 };
 
-// Get incidents by zone for moderators
+// Get incidents by zone for moderators (only pending incidents)
 export const getIncidentsByZone = async (zone: string) => {
     try {
         const q = query(
             collection(db, "incidents"),
             where("zone", "==", zone),
+            where("status", "==", "pending"),
             orderBy("createdAt", "desc")
         );
         const querySnapshot = await getDocs(q);
@@ -142,6 +189,19 @@ export const getIncidentsByZone = async (zone: string) => {
     } catch (error) {
         console.error("Error fetching incidents by zone:", error);
         return [];
+    }
+};
+
+// Update incident status
+export const updateIncidentStatus = async (incidentId: string, status: "pending" | "verified" | "resolved") => {
+    try {
+        await updateDoc(doc(db, "incidents", incidentId), {
+            status: status
+        });
+        return { success: true };
+    } catch (error) {
+        console.error("Error updating incident status:", error);
+        return { success: false, error: "Failed to update incident status" };
     }
 };
 
@@ -193,41 +253,73 @@ export const getVerifiedCrises = async () => {
     }
 };
 
-// Zone Detection - Automatically determine zone from coordinates
-export const detectZoneFromCoordinates = (lat: number, lng: number): string => {
-    // Kerala zones based on latitude ranges (approximate boundaries)
-    // North Kerala: Kasaragod to Kozhikode (around lat 11.0 - 12.9)
-    // Central Kerala: Thrissur to Kottayam (around lat 9.5 - 11.0)
-    // South Kerala: Thiruvananthapuram to Kollam (around lat 8.0 - 9.5)
+// Delete crisis from Firebase
+export const deleteCrisis = async (crisisId: string) => {
+    try {
+        await deleteDoc(doc(db, "crises", crisisId));
+        return { success: true };
+    } catch (error) {
+        console.error("Error deleting crisis:", error);
+        return { success: false, error: "Failed to delete crisis" };
+    }
+};
 
-    if (lat >= 11.0) {
-        return "North Kerala Zone";
-    } else if (lat >= 9.5) {
-        return "Central Kerala Zone";
-    } else {
-        return "South Kerala Zone";
+// District Detection - Extract district name from coordinates using reverse geocoding
+export const detectZoneFromCoordinates = async (lat: number, lng: number): Promise<string> => {
+    try {
+        const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
+        );
+        const data = await response.json();
+
+        // Extract district from address components
+        // OpenStreetMap returns district in various fields depending on location
+        const district = data.address?.state_district ||
+            data.address?.county ||
+            data.address?.district ||
+            data.address?.city ||
+            "Unknown District";
+
+        // Clean up the district name (remove "District" suffix if present)
+        const cleanDistrict = district.replace(/ District$/i, '').trim();
+
+        return cleanDistrict;
+    } catch (error) {
+        console.error("Error detecting district from coordinates:", error);
+        // Fallback to latitude-based zones if API fails
+        if (lat >= 11.0) {
+            return "North Kerala";
+        } else if (lat >= 9.5) {
+            return "Central Kerala";
+        } else {
+            return "South Kerala";
+        }
     }
 };
 
 // Forward incident to crisis (for moderator forwarding to authorities)
 export const forwardIncidentToCrisis = async (
     incident: IncidentReport,
-    moderatorName: string
+    moderatorName: string,
+    moderatorAuthorityName: string // Regional authority name
 ) => {
+    console.log("🚀 forwardIncidentToCrisis called with:", { incident, moderatorName, moderatorAuthorityName });
     try {
         const priority = incident.severity === "critical" ? "critical" : incident.severity === "high" ? "high" : "medium";
 
-        // Automatically detect zone from coordinates
-        const detectedZone = detectZoneFromCoordinates(incident.lat || 0, incident.lng || 0);
+        // Automatically detect zone/district from coordinates
+        const detectedZone = await detectZoneFromCoordinates(incident.lat || 0, incident.lng || 0);
 
         const crisisData: Omit<CrisisData, "id" | "createdAt"> = {
+            incidentId: incident.id,
             location: incident.location,
             lat: incident.lat || 0,
             lng: incident.lng || 0,
             priority: priority,
             crisisType: incident.incidentType,
-            affectedPeople: 0, // Can be updated later
-            zone: detectedZone, // Use auto-detected zone
+            affectedPeople: 0,
+            zone: detectedZone,
+            authorityName: moderatorAuthorityName,
             zoneModerator: moderatorName,
             crisisLevel: incident.severity || "medium",
             status: "verified",
@@ -270,7 +362,41 @@ export const getSeverityScore = async (incidentId: string) => {
     }
 };
 
-// Authority Instructions
+// Authority Instructions System
+
+export const createAuthorityInstruction = async (instruction: Omit<AuthorityInstruction, "id" | "createdAt" | "status">) => {
+    try {
+        const docRef = await addDoc(collection(db, "instructions"), {
+            ...instruction,
+            status: "pending",
+            createdAt: new Date().toISOString()
+        });
+        return { success: true, id: docRef.id };
+    } catch (error) {
+        console.error("Error creating instruction:", error);
+        return { success: false, error: "Failed to create instruction" };
+    }
+};
+
+export const getInstructionsByZone = async (zone: string) => {
+    try {
+        const q = query(
+            collection(db, "instructions"),
+            where("zone", "==", zone),
+            orderBy("createdAt", "desc")
+        );
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as AuthorityInstruction[];
+    } catch (error) {
+        console.error("Error fetching zone instructions:", error);
+        return [];
+    }
+};
+
+// Legacy/Other Instructions
 export const getAuthorityInstructions = async (moderatorId: string) => {
     try {
         const q = query(
@@ -292,8 +418,8 @@ export const getAuthorityInstructions = async (moderatorId: string) => {
 
 export const acknowledgeInstruction = async (instructionId: string) => {
     try {
-        const docRef = collection(db, "authorityInstructions");
-        await addDoc(docRef, {
+        const docRef = doc(db, "instructions", instructionId);
+        await updateDoc(docRef, {
             status: "acknowledged",
             acknowledgedAt: new Date().toISOString()
         });
@@ -301,6 +427,38 @@ export const acknowledgeInstruction = async (instructionId: string) => {
     } catch (error) {
         console.error("Error acknowledging instruction:", error);
         return { success: false };
+    }
+};
+
+// Authority Alerts (For Users)
+export const createAuthorityAlert = async (alert: Omit<AuthorityAlert, "id" | "createdAt">) => {
+    try {
+        const docRef = await addDoc(collection(db, "alerts"), {
+            ...alert,
+            createdAt: new Date().toISOString(),
+        });
+        return { success: true, id: docRef.id };
+    } catch (error) {
+        console.error("Error creating authority alert:", error);
+        return { success: false, error };
+    }
+};
+
+export const getAlertsByZone = async (zone: string) => {
+    try {
+        const q = query(
+            collection(db, "alerts"),
+            where("zone", "==", zone),
+            orderBy("createdAt", "desc")
+        );
+        const querySnapshot = await getDocs(q);
+        return querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as AuthorityAlert[];
+    } catch (error) {
+        console.error("Error fetching authority alerts:", error);
+        return [];
     }
 };
 
@@ -420,8 +578,9 @@ export interface ModeratorProfile {
     moderatorName: string;
     email: string;
     name: string;
-    zone: string;
-    authorityId: string;
+    zone: string; // District name (e.g., "Ernakulam")
+    authorityId: string; // ID of parent authority
+    authorityName: string; // Regional authority name (e.g., "West Kerala")
     createdAt: string;
 }
 

@@ -93,11 +93,14 @@ const ZonalStatus: React.FC = () => {
 
     // Detect zone and fetch broadcasts when coordinates change
     useEffect(() => {
-        if (coordinates) {
-            const zone = detectZoneFromCoordinates(coordinates.lat, coordinates.lng);
-            setUserZone(zone);
-            fetchZoneBroadcasts(zone);
-        }
+        const detectAndFetch = async () => {
+            if (coordinates) {
+                const zone = await detectZoneFromCoordinates(coordinates.lat, coordinates.lng);
+                setUserZone(zone);
+                fetchZoneBroadcasts(zone);
+            }
+        };
+        detectAndFetch();
     }, [coordinates]);
 
     const getStatusColor = (status: ZonalStatusEnum) => {

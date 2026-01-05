@@ -110,6 +110,29 @@ export const mockMapMarkers: MapMarker[] = [
         description: "Safe Haven for Displaced Residents",
         status: "Accepting Occupants",
     },
+    {
+        id: "m7",
+        type: MarkerType.Hospital,
+        location: { lat: 9.9312, lng: 76.2673 },
+        name: "Aster Medcity Kochi",
+        description: "Specialized Emergency Care",
+        status: "Available",
+    },
+    {
+        id: "m8",
+        type: MarkerType.Emergency,
+        location: { lat: 8.5241, lng: 76.9366 },
+        name: "Thiruvananthapuram City Police",
+        description: "Central Station",
+    },
+    {
+        id: "m9",
+        type: MarkerType.Relief,
+        location: { lat: 9.5916, lng: 76.5222 },
+        name: "Kottayam Relief Camp",
+        description: "Flood Relief Center",
+        status: "Open",
+    },
 ];
 
 export const mockZoneInfo: ZoneInfo = {

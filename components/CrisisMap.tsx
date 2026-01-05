@@ -5,6 +5,16 @@ import L from "leaflet";
 import { mockMapMarkers } from "@/lib/mockData";
 import "leaflet-routing-machine";
 
+// Fix for Leaflet default icon in Next.js/Webpack
+const fixLeafletIcon = () => {
+    delete (L.Icon.Default.prototype as any)._getIconUrl;
+    L.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+        iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+    });
+};
+
 declare module "leaflet" {
     namespace Routing {
         function control(options: any): any;
@@ -19,9 +29,13 @@ const CrisisMap: React.FC = () => {
     const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
     const [showRouteInput, setShowRouteInput] = useState(false);
     const [showMarkers, setShowMarkers] = useState(true);
+    const [destinationCoords, setDestinationCoords] = useState<[number, number] | null>(null);
 
     useEffect(() => {
         if (!mapRef.current) return;
+
+        // Apply Icon Fix
+        fixLeafletIcon();
 
         const timer = setTimeout(() => {
             try {
@@ -31,8 +45,11 @@ const CrisisMap: React.FC = () => {
                     zoom: 5,
                 });
 
-                L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                    attribution: "© OpenStreetMap contributors",
+                // Use CartoDB Voyager for a cleaner, less cluttered map
+                L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                    subdomains: 'abcd',
+                    maxZoom: 20
                 }).addTo(map);
 
                 // Get user's location
@@ -43,6 +60,7 @@ const CrisisMap: React.FC = () => {
                                 position.coords.latitude,
                                 position.coords.longitude,
                             ];
+                            setUserLocation(userPos);
 
                             // Only add marker if map is still valid
                             if (map && mapRef.current) {
@@ -91,9 +109,11 @@ const CrisisMap: React.FC = () => {
     useEffect(() => {
         if (!mapInstanceRef.current) return;
 
-        // Clear existing markers (except user location)
+        // Clear existing markers (except user location and route markers)
         mapInstanceRef.current.eachLayer((layer) => {
-            if (layer instanceof L.Marker && !(layer as any)._icon?.classList.contains("user-location-marker")) {
+            if (layer instanceof L.Marker &&
+                !(layer as any)._icon?.classList.contains("user-marker") &&
+                !(layer as any)._icon?.classList.contains("route-marker")) {
                 mapInstanceRef.current?.removeLayer(layer);
             }
         });
@@ -124,12 +144,23 @@ const CrisisMap: React.FC = () => {
     }, [showMarkers]);
 
     const getMarkerIcon = (type: string): string => {
-        // Use consistent emoji for all emergency centers
-        return '<div class="text-3xl">🏥</div>';
+        let emoji = "🏥";
+        let color = "border-red-500";
+
+        switch (type) {
+            case "police": emoji = "👮"; color = "border-blue-500"; break;
+            case "fire": emoji = "🚒"; color = "border-orange-500"; break;
+            case "relief": emoji = "⛺"; color = "border-green-500"; break;
+        }
+
+        return `<div class="flex items-center justify-center w-10 h-10 bg-white rounded-full shadow-xl border-2 ${color} transform -translate-x-1/2 -translate-y-1/2 text-2xl hover:scale-110 transition-transform cursor-pointer">${emoji}</div>`;
     };
 
     const handleRouteSearch = async () => {
-        if (!searchDestination || !mapInstanceRef.current || !userLocation) return;
+        if (!searchDestination || !mapInstanceRef.current || !userLocation) {
+            if (!userLocation) alert("Waiting for your location...");
+            return;
+        }
 
         try {
             // Search for destination
@@ -143,10 +174,15 @@ const CrisisMap: React.FC = () => {
             if (data && data.length > 0) {
                 const destLat = parseFloat(data[0].lat);
                 const destLng = parseFloat(data[0].lon);
+                setDestinationCoords([destLat, destLng]);
 
                 // Remove existing routing control
                 if (routingControlRef.current) {
-                    mapInstanceRef.current.removeControl(routingControlRef.current);
+                    try {
+                        mapInstanceRef.current.removeControl(routingControlRef.current);
+                    } catch (e) {
+                        // ignore if already removed
+                    }
                 }
 
                 // Create routing control with Leaflet Routing Machine
@@ -155,20 +191,30 @@ const CrisisMap: React.FC = () => {
                         L.latLng(userLocation[0], userLocation[1]),
                         L.latLng(destLat, destLng),
                     ],
+                    router: new (L as any).Routing.OSRMv1({
+                        serviceUrl: 'https://router.project-osrm.org/route/v1',
+                        profile: 'driving'
+                    }),
                     routeWhileDragging: false,
                     addWaypoints: false,
                     lineOptions: {
                         styles: [{ color: "#22c55e", opacity: 0.8, weight: 6 }],
                     },
-                    createMarker: function (i: number, waypoint: any) {
-                        const icon = i === 0 ? "📍" : "🎯";
-                        return L.marker(waypoint.latLng, {
-                            icon: L.divIcon({
-                                html: `<div class="text-3xl">${icon}</div>`,
-                                className: "route-marker",
-                                iconSize: [40, 40],
-                            }),
-                        });
+                    show: true, // Show itinerary container
+                    createMarker: function (i: number, waypoint: any, n: number) {
+                        // Only show destination marker (last point)
+                        // Skip start marker (i=0) as we already have a user location marker
+                        if (i === n - 1) {
+                            return L.marker(waypoint.latLng, {
+                                icon: L.divIcon({
+                                    html: '<div class="text-3xl">🎯</div>',
+                                    className: "route-marker",
+                                    iconSize: [40, 40],
+                                    iconAnchor: [20, 20],
+                                }),
+                            });
+                        }
+                        return null;
                     },
                 }).addTo(mapInstanceRef.current);
 
@@ -184,7 +230,17 @@ const CrisisMap: React.FC = () => {
             }
         } catch (error) {
             console.error("Route search error:", error);
-            alert("Error finding route. Please try again.");
+            alert("Error finding route. Please check connection.");
+        }
+    };
+
+    const openGoogleMaps = () => {
+        if (userLocation && destinationCoords) {
+            const url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation[0]},${userLocation[1]}&destination=${destinationCoords[0]},${destinationCoords[1]}`;
+            window.open(url, '_blank');
+        } else if (searchDestination) {
+            const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchDestination)}`;
+            window.open(url, '_blank');
         }
     };
 
@@ -209,21 +265,33 @@ const CrisisMap: React.FC = () => {
                     </button>
 
                     {showRouteInput && (
-                        <div className="mt-4 flex gap-3">
-                            <input
-                                type="text"
-                                value={searchDestination}
-                                onChange={(e) => setSearchDestination(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && handleRouteSearch()}
-                                placeholder="Enter destination (e.g., AIIMS Delhi)"
-                                className="flex-1 px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
-                            />
-                            <button
-                                onClick={handleRouteSearch}
-                                className="px-6 py-3 bg-gradient-to-r from-safe-600 to-safe-700 hover:from-safe-500 hover:to-safe-600 rounded-lg font-medium transition-all"
-                            >
-                                Find Route
-                            </button>
+                        <div className="mt-4 flex flex-col gap-3">
+                            <div className="flex gap-3">
+                                <input
+                                    type="text"
+                                    value={searchDestination}
+                                    onChange={(e) => setSearchDestination(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && handleRouteSearch()}
+                                    placeholder="Enter destination (e.g., AIIMS Delhi)"
+                                    className="flex-1 px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
+                                />
+                                <button
+                                    onClick={handleRouteSearch}
+                                    className="px-6 py-3 bg-gradient-to-r from-safe-600 to-safe-700 hover:from-safe-500 hover:to-safe-600 rounded-lg font-medium transition-all"
+                                >
+                                    Find Route
+                                </button>
+                            </div>
+
+                            {/* Google Maps Fallback */}
+                            {(destinationCoords || searchDestination) && (
+                                <button
+                                    onClick={openGoogleMaps}
+                                    className="self-start text-sm text-gray-400 hover:text-white flex items-center gap-2 px-1"
+                                >
+                                    <span>↗️</span> Open in Google Maps
+                                </button>
+                            )}
                         </div>
                     )}
                 </div>
@@ -248,7 +316,9 @@ const CrisisMap: React.FC = () => {
             </div>
 
             {/* Map Container */}
-            <div ref={mapRef} className="flex-1 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20" />
+            <div className="flex-1 relative rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20">
+                <div ref={mapRef} className="absolute inset-0 z-0" />
+            </div>
 
             {/* Legend */}
             <div className="mt-4 glass-dark rounded-lg p-4">

@@ -69,6 +69,12 @@ const AuthorityCrisisMap: React.FC<AuthorityCrisisMapProps> = ({ onCrisisSelect,
 
         // Add markers for each crisis
         filteredCrises.forEach((crisis) => {
+            // Skip crises without valid coordinates
+            if (!crisis.lat || !crisis.lng) {
+                console.warn("Skipping crisis without coordinates:", crisis);
+                return;
+            }
+
             const marker = L.marker([crisis.lat, crisis.lng], {
                 icon: createCustomIcon(crisis.priority),
             }).addTo(mapInstance);

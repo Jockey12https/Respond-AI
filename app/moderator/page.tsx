@@ -9,10 +9,13 @@ import {
     getSeverityScore,
     getAuthorityInstructions,
     getBroadcastHistory,
+    getInstructionsByZone,
+    acknowledgeInstruction,
     createBroadcast,
     getModeratorByUserId,
     getAuthorityByUserId,
     forwardIncidentToCrisis,
+    updateIncidentStatus,
     IncidentReport,
     SeverityScore,
     AuthorityInstruction,
@@ -56,7 +59,7 @@ export default function ModeratorDashboard() {
     const [activeTab, setActiveTab] = useState<TabType>("reports");
     const [incidents, setIncidents] = useState<IncidentReport[]>([]);
     const [severityScores, setSeverityScores] = useState<Map<string, SeverityScore>>(new Map());
-    const [instructions, setInstructions] = useState<AuthorityInstruction[]>(MOCK_INSTRUCTIONS);
+    const [instructions, setInstructions] = useState<AuthorityInstruction[]>([]);
     const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -93,11 +96,8 @@ export default function ModeratorDashboard() {
                 const profile = await getModeratorByUserId(user.uid);
                 if (profile) {
                     setModeratorZone(profile.zone);
-                    // Fetch authority name using authorityId
-                    const authority = await getAuthorityByUserId(profile.authorityId);
-                    if (authority) {
-                        setAuthorityName(authority.authorityName);
-                    }
+                    // Use authorityName directly from profile
+                    setAuthorityName(profile.authorityName || "");
                 }
             }
         };
@@ -132,6 +132,21 @@ export default function ModeratorDashboard() {
                 const broadcastData = await getBroadcastHistory(user.uid);
                 setBroadcasts(broadcastData);
             }
+
+            // Fetch Authority Instructions
+            if (moderatorZone) {
+                const fetchedInstructions = await getInstructionsByZone(moderatorZone);
+                setInstructions(fetchedInstructions);
+
+                // Set acknowledged set based on status
+                const ackSet = new Set<string>();
+                fetchedInstructions.forEach(ins => {
+                    if (ins.status === "acknowledged" && ins.id) {
+                        ackSet.add(ins.id);
+                    }
+                });
+                setAcknowledgedInstructions(ackSet);
+            }
         } catch (error) {
             console.error("Error loading moderator data:", error);
         } finally {
@@ -154,7 +169,7 @@ export default function ModeratorDashboard() {
             const result = await createBroadcast({
                 moderatorId: user.uid,
                 moderatorName: user.name,
-                zone: "South Kerala Zone", // TODO: Get from user profile
+                zone: moderatorZone || "Unknown Zone",
                 message: broadcastMessage,
                 type: broadcastType,
                 recipientCount: 47 // Mock count
@@ -305,86 +320,111 @@ export default function ModeratorDashboard() {
                             </div>
                         ) : (
                             <div className="space-y-4">
-                                {incidents.map((incident) => {
-                                    const severity = incident.id ? severityScores.get(incident.id) : null;
-                                    return (
-                                        <div key={incident.id} className="glass rounded-xl p-6 border-2 border-white/10">
-                                            <div className="flex items-start justify-between mb-4">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-3 mb-2">
-                                                        <h3 className="text-xl font-bold">{incident.incidentType}</h3>
-                                                        {severity && (
-                                                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${getSeverityColor(severity.riskLevel)}`}>
-                                                                {severity.riskLevel?.toUpperCase()} - Score: {severity.severityScore}
+                                {incidents
+                                    .filter(incident => {
+                                        // Hide forwarded and alerted reports
+                                        if (!incident.id) return true;
+                                        return !forwardedReports.has(incident.id) && !alertedReports.has(incident.id);
+                                    })
+                                    .map((incident) => {
+                                        const severity = incident.id ? severityScores.get(incident.id) : null;
+                                        return (
+                                            <div key={incident.id} className="glass rounded-xl p-6 border-2 border-white/10">
+                                                <div className="flex items-start justify-between mb-4">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-3 mb-2">
+                                                            <h3 className="text-xl font-bold">{incident.incidentType}</h3>
+                                                            {severity && (
+                                                                <span className={`px-3 py-1 rounded-full text-xs font-bold ${getSeverityColor(severity.riskLevel)}`}>
+                                                                    {severity.riskLevel?.toUpperCase()}
+                                                                </span>
+                                                            )}
+                                                            <span className={`px-2 py-1 rounded text-xs ${incident.status === "pending" ? "bg-yellow-500/20 text-yellow-400" :
+                                                                incident.status === "verified" ? "bg-green-500/20 text-green-400" :
+                                                                    "bg-gray-500/20 text-gray-400"
+                                                                }`}>
+                                                                {incident.status}
                                                             </span>
-                                                        )}
-                                                        <span className={`px-2 py-1 rounded text-xs ${incident.status === "pending" ? "bg-yellow-500/20 text-yellow-400" :
-                                                            incident.status === "verified" ? "bg-green-500/20 text-green-400" :
-                                                                "bg-gray-500/20 text-gray-400"
-                                                            }`}>
-                                                            {incident.status}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-gray-400 text-sm mb-2">📍 {incident.location}</p>
-                                                    <p className="text-gray-300 mb-3">{incident.description}</p>
-                                                    <div className="flex items-center gap-4 text-sm text-gray-400">
-                                                        <span>👤 {incident.userName}</span>
-                                                        <span>📧 {incident.userEmail}</span>
-                                                        {incident.contactNumber && <span>📞 {incident.contactNumber}</span>}
-                                                        <span>🕐 {new Date(incident.createdAt).toLocaleString()}</span>
+                                                        </div>
+                                                        <p className="text-gray-400 text-sm mb-2">📍 {incident.location}</p>
+                                                        <p className="text-gray-300 mb-3">{incident.description}</p>
+                                                        <div className="flex items-center gap-4 text-sm text-gray-400">
+                                                            <span>👤 {incident.userName}</span>
+                                                            <span>📧 {incident.userEmail}</span>
+                                                            {incident.contactNumber && <span>📞 {incident.contactNumber}</span>}
+                                                            <span>🕐 {new Date(incident.createdAt).toLocaleString()}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
 
-                                            {incident.status === "pending" && (
-                                                <div className="space-y-3">
-                                                    <div className="flex gap-3">
-                                                        <button
-                                                            onClick={async () => {
-                                                                if (incident.id && user) {
-                                                                    const result = await forwardIncidentToCrisis(
-                                                                        incident,
-                                                                        user.name
-                                                                    );
-                                                                    if (result.success) {
-                                                                        setForwardedReports(prev => new Set(prev).add(incident.id!));
-                                                                    } else {
-                                                                        alert("Failed to forward incident to authorities");
+                                                {incident.status === "pending" && (
+                                                    <div className="space-y-3">
+                                                        <div className="flex gap-3">
+                                                            <button
+                                                                onClick={async () => {
+                                                                    console.log("\u26a1 Forward button clicked", {
+                                                                        incidentId: incident.id,
+                                                                        userName: user?.name,
+                                                                        authorityName: authorityName
+                                                                    });
+                                                                    if (incident.id && user) {
+                                                                        const result = await forwardIncidentToCrisis(
+                                                                            incident,
+                                                                            user.name,
+                                                                            authorityName || "Unknown Authority" // Pass moderator's authority
+                                                                        );
+                                                                        console.log("\u2705 Forward result:", result);
+                                                                        if (result.success) {
+                                                                            setForwardedReports(prev => new Set(prev).add(incident.id!));
+                                                                        } else {
+                                                                            alert("Failed to forward incident to authorities");
+                                                                        }
                                                                     }
-                                                                }
-                                                            }}
-                                                            disabled={incident.id ? forwardedReports.has(incident.id) : false}
-                                                            className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all"
-                                                        >
-                                                            {incident.id && forwardedReports.has(incident.id) ? "✓ Forwarded" : "📤 Forward to Authorities"}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                if (incident.id) {
-                                                                    setAlertedReports(prev => new Set(prev).add(incident.id!));
-                                                                }
-                                                            }}
-                                                            disabled={incident.id ? alertedReports.has(incident.id) : false}
-                                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all"
-                                                        >
-                                                            {incident.id && alertedReports.has(incident.id) ? "✓ Team Alerted" : "🚨 Alert Response Team"}
-                                                        </button>
+                                                                }}
+                                                                disabled={incident.id ? forwardedReports.has(incident.id) : false}
+                                                                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-all"
+                                                            >
+                                                                {incident.id && forwardedReports.has(incident.id) ? "✓ Forwarded" : "📤 Forward to Authorities"}
+                                                            </button>
+                                                            <button
+                                                                onClick={async () => {
+                                                                    if (incident.id) {
+                                                                        // Update incident status to verified
+                                                                        await updateIncidentStatus(incident.id, "verified");
+                                                                        // Track as alerted
+                                                                        setAlertedReports(prev => new Set(prev).add(incident.id!));
+                                                                    }
+                                                                }}
+                                                                disabled={incident.id ? alertedReports.has(incident.id) : false}
+                                                                className="px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 rounded-lg font-medium transition-all transform hover:scale-105"
+                                                            >
+                                                                {incident.id && alertedReports.has(incident.id) ? "✓ Team Alerted" : "🚨 Alert Response Team"}
+                                                            </button>
+                                                        </div>
+                                                        {incident.id && forwardedReports.has(incident.id) && (
+                                                            <div className="bg-green-500/20 border border-green-500 rounded-lg p-3 text-green-400 text-sm">
+                                                                ✓ Report forwarded to Authorities
+                                                            </div>
+                                                        )}
+                                                        {incident.id && alertedReports.has(incident.id) && (
+                                                            <div className="bg-green-500/20 border border-green-500 rounded-lg p-3 text-green-400 text-sm">
+                                                                ✓ Response team alerted
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    {incident.id && forwardedReports.has(incident.id) && (
-                                                        <div className="bg-green-500/20 border border-green-500 rounded-lg p-3 text-green-400 text-sm">
-                                                            ✓ Report forwarded to Authorities
-                                                        </div>
-                                                    )}
-                                                    {incident.id && alertedReports.has(incident.id) && (
-                                                        <div className="bg-green-500/20 border border-green-500 rounded-lg p-3 text-green-400 text-sm">
-                                                            ✓ Response team alerted
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                {incidents.filter(incident => {
+                                    if (!incident.id) return true;
+                                    return !forwardedReports.has(incident.id) && !alertedReports.has(incident.id);
+                                }).length === 0 && (
+                                        <div className="text-center py-12 glass rounded-xl">
+                                            <div className="text-4xl mb-4">✅</div>
+                                            <p className="text-gray-400">All reports have been processed</p>
                                         </div>
-                                    );
-                                })}
+                                    )}
                             </div>
                         )}
                     </div>
@@ -426,9 +466,17 @@ export default function ModeratorDashboard() {
 
                                     {instruction.status === "pending" && instruction.id && !acknowledgedInstructions.has(instruction.id) && (
                                         <button
-                                            onClick={() => {
+                                            onClick={async () => {
                                                 if (instruction.id) {
-                                                    setAcknowledgedInstructions(prev => new Set(prev).add(instruction.id!));
+                                                    const result = await acknowledgeInstruction(instruction.id);
+                                                    if (result.success) {
+                                                        setAcknowledgedInstructions(prev => new Set(prev).add(instruction.id!));
+                                                        setInstructions(prev => prev.map(ins =>
+                                                            ins.id === instruction.id
+                                                                ? { ...ins, status: 'acknowledged', acknowledgedAt: new Date().toISOString() }
+                                                                : ins
+                                                        ));
+                                                    }
                                                 }
                                             }}
                                             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-all"

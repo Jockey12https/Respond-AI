@@ -35,7 +35,7 @@ service cloud.firestore {
       // Authorities can create crises
       allow create: if isAuthenticated();
       // Everyone can read crises
-      allow read: if isAuthenticated();
+      allow read: if true;
       // Authorities can update crises
       allow update: if isAuthenticated();
       allow delete: if false;
@@ -48,11 +48,19 @@ service cloud.firestore {
     }
     
     // Authority instructions collection
-    match /authorityInstructions/{instructionId} {
+    match /instructions/{instructionId} {
       // Authorities can create instructions
       allow create: if isAuthenticated();
       // Moderators can read and update their instructions
       allow read: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if false;
+    }
+
+    // Zonal Alerts collection (Authority -> Users)
+    match /alerts/{alertId} {
+      allow create: if isAuthenticated();
+      allow read: if true;
       allow update: if isAuthenticated();
       allow delete: if false;
     }
@@ -62,7 +70,7 @@ service cloud.firestore {
       // Moderators can create broadcasts
       allow create: if isAuthenticated();
       // Everyone can read broadcasts
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow update: if false;
       allow delete: if false;
     }

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, UserRole } from "@/context/AuthContext";
-import { getAllAuthorities, createAuthorityProfile, createModeratorProfile, AuthorityProfile } from "@/lib/firestore";
+import { getAllAuthorities, createAuthorityProfile, createModeratorProfile, AuthorityProfile, getAuthorityNames, getDistrictsForAuthority } from "@/lib/firestore";
 
 const RegisterPage: React.FC = () => {
     const router = useRouter();
@@ -96,13 +96,31 @@ const RegisterPage: React.FC = () => {
 
                 // If moderator, save moderator profile
                 if (formData.role === "moderator" && result.userId) {
+                    // Find authority name from selected authority ID
+                    const selectedAuth = authorities.find(a => a.id === formData.selectedAuthority);
+
+                    // Validation: Ensure authority has authorityName
+                    if (!selectedAuth?.authorityName) {
+                        setError("Selected authority is missing regional name. Please contact administrator.");
+                        setIsLoading(false);
+                        return;
+                    }
+
+                    // Validation: Ensure zone is selected
+                    if (!formData.zoneName) {
+                        setError("Please select a district/zone.");
+                        setIsLoading(false);
+                        return;
+                    }
+
                     await createModeratorProfile({
                         userId: result.userId,
                         moderatorName: formData.name,
                         email: formData.email,
                         name: formData.name,
                         zone: formData.zoneName,
-                        authorityId: formData.selectedAuthority
+                        authorityId: formData.selectedAuthority,
+                        authorityName: selectedAuth.authorityName // Guaranteed to exist now
                     });
                 }
 
@@ -207,14 +225,18 @@ const RegisterPage: React.FC = () => {
                                 <label className="block text-sm font-medium mb-2">
                                     🏢 Authority Name/Organization
                                 </label>
-                                <input
-                                    type="text"
+                                <select
                                     value={formData.authorityName}
                                     onChange={(e) => setFormData({ ...formData, authorityName: e.target.value })}
                                     className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-500/50 transition-all"
-                                    placeholder="e.g., Kerala Disaster Management Authority"
                                     required
-                                />
+                                >
+                                    <option value="">Select Kerala Region...</option>
+                                    <option value="North Kerala">North Kerala</option>
+                                    <option value="South Kerala">South Kerala</option>
+                                    <option value="East Kerala">East Kerala</option>
+                                    <option value="West Kerala">West Kerala</option>
+                                </select>
                                 <p className="text-xs text-gray-400 mt-2">This name will be visible to moderators</p>
                             </div>
                         )}
@@ -248,14 +270,24 @@ const RegisterPage: React.FC = () => {
                                     <label className="block text-sm font-medium mb-2">
                                         📍 Zone Name
                                     </label>
-                                    <input
-                                        type="text"
+                                    <select
                                         value={formData.zoneName}
                                         onChange={(e) => setFormData({ ...formData, zoneName: e.target.value })}
                                         className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
-                                        placeholder="e.g., North Kerala Zone, South Kerala Zone"
                                         required
-                                    />
+                                        disabled={!formData.selectedAuthority}
+                                    >
+                                        <option value="">Select district...</option>
+                                        {formData.selectedAuthority && authorities.find(a => a.id === formData.selectedAuthority) &&
+                                            getDistrictsForAuthority(
+                                                authorities.find(a => a.id === formData.selectedAuthority)?.authorityName || ""
+                                            ).map((district) => (
+                                                <option key={district} value={district}>
+                                                    {district}
+                                                </option>
+                                            ))
+                                        }
+                                    </select>
                                     <p className="text-xs text-gray-400 mt-2">Enter the zone you will be moderating</p>
                                 </div>
                             </>
