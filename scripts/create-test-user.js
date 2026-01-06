@@ -6,7 +6,7 @@ import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, doc, setDoc } from "firebase/firestore";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyApbH75Dh6bg1OXdHl2lZz_-26Lhm-i_7Y",
+    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: "respond-ai.firebaseapp.com",
     projectId: "respond-ai",
     storageBucket: "respond-ai.firebasestorage.app",

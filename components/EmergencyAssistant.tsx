@@ -28,7 +28,7 @@ const EmergencyAssistant: React.FC<EmergencyAssistantProps> = ({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatRef = useRef<any>(null);
 
-    const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "AIzaSyDqR5MS8uPfDhGfuesgQoXYpuRQmHF08dY";
+    const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 
     const systemPrompt = `You are an emergency response assistant inside the RESPOND.AI platform.
 An SOS alert has already been sent to moderators and authorities. Your role is to support the user until help arrives.
@@ -85,21 +85,21 @@ Remember: Be calm, supportive, and practical. Lives may depend on your guidance.
 
     const initializeChat = async () => {
         setChatStarted(true);
-        
+
         const initialMessage: Message = {
             role: "assistant",
             content: `🚨 **Help is on the way!** Emergency services have been notified and are responding to your ${incidentType} alert.\n\nI'm here to help you stay safe until they arrive. Are you in a safe location right now?`,
             timestamp: new Date(),
         };
-        
+
         setMessages([initialMessage]);
 
         try {
             console.log("Initializing Gemini AI...");
             console.log("API Key present:", !!GEMINI_API_KEY);
-            
+
             const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-            const model = genAI.getGenerativeModel({ 
+            const model = genAI.getGenerativeModel({
                 model: "gemini-2.5-flash",
             });
 
@@ -110,7 +110,7 @@ Remember: Be calm, supportive, and practical. Lives may depend on your guidance.
                     temperature: 0.7,
                 },
             });
-            
+
             console.log("Chat initialized successfully");
         } catch (error) {
             console.error("Error initializing chat:", error);
@@ -137,14 +137,14 @@ Remember: Be calm, supportive, and practical. Lives may depend on your guidance.
             }
 
             console.log("Sending message to Gemini:", inputMessage);
-            
+
             // Include system context in each message
             const contextualMessage = `${systemPrompt}\n\nUser's situation: ${inputMessage}`;
-            
+
             const result = await chatRef.current.sendMessage(contextualMessage);
             const response = await result.response;
             const text = response.text();
-            
+
             console.log("Received response:", text);
 
             const assistantMessage: Message = {
@@ -157,13 +157,13 @@ Remember: Be calm, supportive, and practical. Lives may depend on your guidance.
         } catch (error) {
             console.error("Error sending message:", error);
             console.error("Error details:", error instanceof Error ? error.message : String(error));
-            
+
             const errorMessage: Message = {
                 role: "assistant",
                 content: "I'm having trouble connecting. Please stay calm - emergency services are still on their way. Focus on staying safe.",
                 timestamp: new Date(),
             };
-            
+
             setMessages((prev) => [...prev, errorMessage]);
         } finally {
             setIsLoading(false);
@@ -218,11 +218,10 @@ Remember: Be calm, supportive, and practical. Lives may depend on your guidance.
                             className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                         >
                             <div
-                                className={`max-w-[80%] rounded-2xl p-3 ${
-                                    message.role === "user"
-                                        ? "bg-blue-600 text-white rounded-br-none"
-                                        : "glass text-gray-100 rounded-bl-none border border-blue-500/30"
-                                }`}
+                                className={`max-w-[80%] rounded-2xl p-3 ${message.role === "user"
+                                    ? "bg-blue-600 text-white rounded-br-none"
+                                    : "glass text-gray-100 rounded-bl-none border border-blue-500/30"
+                                    }`}
                             >
                                 {message.role === "assistant" && (
                                     <div className="flex items-center gap-2 mb-1">
