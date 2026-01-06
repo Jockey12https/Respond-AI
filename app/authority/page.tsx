@@ -8,12 +8,12 @@ import { getAuthorityByUserId, getAllCrises, CrisisData } from "@/lib/firestore"
 
 // Dynamically import map components to avoid SSR issues with Leaflet
 const AuthorityCrisisMap = dynamic(
-    () => import("@/components/AuthorityCrisisMap"),
+    () => import("@/components/AuthorityCrisisMap").then(mod => mod.default),
     { ssr: false }
 );
 
 const CrisisDetailView = dynamic(
-    () => import("@/components/CrisisDetailView"),
+    () => import("@/components/CrisisDetailView").then(mod => mod.default),
     { ssr: false }
 );
 
@@ -34,6 +34,7 @@ export default function AuthorityDashboard() {
     const [showUserList, setShowUserList] = useState(false);
     const [authorityName, setAuthorityName] = useState<string>("");
     const [crises, setCrises] = useState<CrisisData[]>([]);
+    const [useTWSM, setUseTWSM] = useState(false); // Toggle between Firebase and TWSM backend
 
     // Protect route - only authorities can access
     React.useEffect(() => {
@@ -46,23 +47,42 @@ export default function AuthorityDashboard() {
     React.useEffect(() => {
         const fetchAuthorityProfile = async () => {
             if (user && user.role === "authority") {
-                const profile = await getAuthorityByUserId(user.uid);
-                if (profile) {
-                    setAuthorityName(profile.authorityName);
+                try {
+                    const profile = await getAuthorityByUserId(user.uid);
+                    if (profile) {
+                        setAuthorityName(profile.authorityName);
+                    }
+                } catch (error) {
+                    console.error("Error fetching authority profile:", error);
                 }
             }
         };
         fetchAuthorityProfile();
     }, [user]);
 
-    // Fetch crises from Firebase
+    // Fetch crises from Firebase (only if not using TWSM)
     React.useEffect(() => {
+        if (useTWSM) return; // Skip Firebase fetch if using TWSM backend
+
         const fetchCrises = async () => {
-            const fetchedCrises = await getAllCrises();
-            setCrises(fetchedCrises);
+            try {
+                const fetchedCrises = await getAllCrises();
+                setCrises(fetchedCrises);
+                console.log("✅ Fetched crises from Firebase:", fetchedCrises);
+            } catch (error) {
+                console.error("Error fetching crises:", error);
+            }
         };
+
+        // Initial fetch
         fetchCrises();
-    }, []);
+
+        // Set up polling to refresh every 5 seconds
+        const interval = setInterval(fetchCrises, 5000);
+
+        // Cleanup interval on unmount or when switching to TWSM
+        return () => clearInterval(interval);
+    }, [useTWSM]);
 
     if (!user || user.role !== "authority") {
         return (
@@ -104,6 +124,19 @@ export default function AuthorityDashboard() {
                         {authorityName && (
                             <p className="text-red-400 font-bold text-lg">| {authorityName}</p>
                         )}
+                        {/* Data Source Toggle */}
+                        <div className="flex items-center gap-2 glass rounded-lg px-3 py-2">
+                            <span className="text-xs text-gray-400">Data Source:</span>
+                            <button
+                                onClick={() => setUseTWSM(!useTWSM)}
+                                className={`px-3 py-1 rounded text-xs font-semibold transition-all ${useTWSM
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-green-600 text-white"
+                                    }`}
+                            >
+                                {useTWSM ? "TWSM Backend" : "Firebase"}
+                            </button>
+                        </div>
                         <button
                             onClick={() => {
                                 logout();
@@ -186,24 +219,54 @@ export default function AuthorityDashboard() {
                     <div className="h-full glass rounded-2xl p-6 border-2 border-white/10">
                         <div className="flex items-center justify-between mb-4">
                             <div>
-                                <h2 className="text-xl font-bold">Kerala Crisis Map - Verified Locations</h2>
-                                <p className="text-sm text-gray-400">Click on any crisis marker to view details and coordinate response</p>
+                                <h2 className="text-xl font-bold">
+                                    {useTWSM ? "TWSM Backend Crisis Map" : "Kerala Crisis Map - Verified Locations"}
+                                </h2>
+                                <p className="text-sm text-gray-400">
+                                    {useTWSM
+                                        ? "Real-time crisis classification using Trust-Weighted Severity Model"
+                                        : "Click on any crisis marker to view details and coordinate response"
+                                    }
+                                </p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <span className="px-3 py-1 rounded-full bg-green-500/20 text-green-400 text-xs font-bold">
                                     ● LIVE
                                 </span>
                                 <span className="text-sm text-gray-400">
-                                    {crises.length} Active Crises
+                                    {useTWSM ? "Auto-updating" : `${crises.length} Active Crises`}
                                 </span>
+                                {!useTWSM && (
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                const fetchedCrises = await getAllCrises();
+                                                setCrises(fetchedCrises);
+                                                console.log("🔄 Manual refresh - Fetched crises:", fetchedCrises);
+                                            } catch (error) {
+                                                console.error("Error refreshing crises:", error);
+                                            }
+                                        }}
+                                        className="px-3 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-semibold transition-all flex items-center gap-1"
+                                    >
+                                        🔄 Refresh
+                                    </button>
+                                )}
                             </div>
                         </div>
 
                         <div className="h-[calc(100%-4rem)] rounded-xl overflow-hidden border-2 border-white/10">
                             <AuthorityCrisisMap
                                 onCrisisSelect={setSelectedCrisis}
-                                zoneFilter={authorityName}
-                                crises={crises}
+                                // Pass Firebase data and zone filter only if NOT using TWSM
+                                {...(!useTWSM && {
+                                    crises: crises,
+                                    zoneFilter: authorityName
+                                })}
+                                // Pass onDataLoad callback only if using TWSM
+                                {...(useTWSM && {
+                                    onDataLoad: (count) => console.log(`TWSM loaded ${count} crises`)
+                                })}
                             />
                         </div>
                     </div>

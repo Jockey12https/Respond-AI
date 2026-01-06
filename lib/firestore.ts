@@ -1,6 +1,39 @@
 import { collection, addDoc, getDocs, query, where, orderBy, Timestamp } from "firebase/firestore";
 import { db } from "./firebase";
 
+async function calculateAndUpdateSeverity(
+  incidentId: string,
+  description: string,
+  zone: string,
+  location: string,
+  moderatorName: string
+) {
+  try {
+    const response = await fetch('http://localhost:5000/api/forward/incident-to-crisis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        incidentId,
+        description,
+        zone,
+        location,
+        moderatorName,
+      }),
+    });
+
+    const data = await response.json();
+    
+    if (data.success) {
+      console.log(`✅ Crisis level updated to: ${data.crisis_level?.toUpperCase()}`);
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error calculating severity:', error);
+    return { success: false };
+  }
+}
+
 export interface IncidentReport {
     id?: string;
     userId: string;
@@ -210,37 +243,29 @@ export const detectZoneFromCoordinates = (lat: number, lng: number): string => {
 };
 
 // Forward incident to crisis (for moderator forwarding to authorities)
-export const forwardIncidentToCrisis = async (
-    incident: IncidentReport,
-    moderatorName: string
-) => {
-    try {
-        const priority = incident.severity === "critical" ? "critical" : incident.severity === "high" ? "high" : "medium";
-
-        // Automatically detect zone from coordinates
-        const detectedZone = detectZoneFromCoordinates(incident.lat || 0, incident.lng || 0);
-
-        const crisisData: Omit<CrisisData, "id" | "createdAt"> = {
-            location: incident.location,
-            lat: incident.lat || 0,
-            lng: incident.lng || 0,
-            priority: priority,
-            crisisType: incident.incidentType,
-            affectedPeople: 0, // Can be updated later
-            zone: detectedZone, // Use auto-detected zone
-            zoneModerator: moderatorName,
-            crisisLevel: incident.severity || "medium",
-            status: "verified",
-            description: incident.description
-        };
-
-        const result = await createCrisisData(crisisData);
-        return result;
-    } catch (error) {
-        console.error("Error forwarding incident to crisis:", error);
-        return { success: false, error: "Failed to forward incident" };
-    }
-};
+export async function forwardIncidentToCrisis(
+  incident: IncidentReport,
+  moderatorName: string
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    // ⭐ ADD THIS CODE ⭐
+    await calculateAndUpdateSeverity(
+      incident.id || 'unknown',
+      incident.description,
+      incident.zone || 'Unknown Zone',
+      incident.location,
+      moderatorName
+    );
+    // ⭐ END ⭐
+    
+    // ✅ ADD THIS RETURN STATEMENT
+    return { success: true, message: 'Incident forwarded successfully' };
+    
+  } catch (error) {
+    console.error('Error forwarding incident to crisis:', error);
+    return { success: false, message: 'Failed to forward incident to crisis' };
+  }
+}
 
 // Severity Scores (Mock for now - will be replaced with ML model)
 export const getSeverityScore = async (incidentId: string) => {

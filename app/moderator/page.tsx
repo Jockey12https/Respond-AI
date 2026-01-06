@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import TrustScoreBadge from "@/components/TrustScoreBadge";
 import {
     getAllIncidents,
     getIncidentsByZone,
@@ -327,11 +328,22 @@ export default function ModeratorDashboard() {
                                                     </div>
                                                     <p className="text-gray-400 text-sm mb-2">📍 {incident.location}</p>
                                                     <p className="text-gray-300 mb-3">{incident.description}</p>
-                                                    <div className="flex items-center gap-4 text-sm text-gray-400">
+                                                    <div className="flex items-center gap-4 text-sm text-gray-400 mb-3">
                                                         <span>👤 {incident.userName}</span>
                                                         <span>📧 {incident.userEmail}</span>
                                                         {incident.contactNumber && <span>📞 {incident.contactNumber}</span>}
                                                         <span>🕐 {new Date(incident.createdAt).toLocaleString()}</span>
+                                                    </div>
+                                                    {/* Reporter Trust Score */}
+                                                    <div className="mt-2">
+                                                        <TrustScoreBadge
+                                                            trustScore={0.5}
+                                                            totalReports={0}
+                                                            verifiedReports={0}
+                                                            verificationRatio={0}
+                                                            trend="stable"
+                                                            showDetails={false}
+                                                        />
                                                     </div>
                                                 </div>
                                             </div>

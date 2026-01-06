@@ -3,15 +3,27 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
 import SOSModal from "@/components/SOSModal";
-import IncidentReport from "@/components/IncidentReport";
 import AlertsNotifications from "@/components/AlertsNotifications";
-import CrisisMap from "@/components/CrisisMap";
 import ZonalStatus from "@/components/ZonalStatus";
 import EmergencyAssistant from "@/components/EmergencyAssistant";
+import TrustScoreBadge from "@/components/TrustScoreBadge";
 import { ViewType, IncidentType } from "@/types";
 import { mockAlerts } from "@/lib/mockData";
+import { twsmAPI, TrustScore } from "@/lib/api";
+
+// Dynamically import components that use Leaflet to avoid SSR issues
+const IncidentReport = dynamic(() => import("@/components/IncidentReport"), {
+    ssr: false,
+    loading: () => <div className="h-full flex items-center justify-center"><p className="text-gray-400">Loading map...</p></div>
+});
+
+const CrisisMap = dynamic(() => import("@/components/CrisisMap"), {
+    ssr: false,
+    loading: () => <div className="h-full flex items-center justify-center"><p className="text-gray-400">Loading map...</p></div>
+});
 
 export default function Dashboard() {
     const { isAuthenticated, user } = useAuth();
@@ -21,6 +33,7 @@ export default function Dashboard() {
     const [showSOSConfirmation, setShowSOSConfirmation] = useState(false);
     const [showEmergencyAssistant, setShowEmergencyAssistant] = useState(false);
     const [selectedIncidentType, setSelectedIncidentType] = useState<IncidentType>(IncidentType.Other);
+    const [trustScore, setTrustScore] = useState<TrustScore | null>(null);
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -30,6 +43,31 @@ export default function Dashboard() {
             router.push("/authority");
         }
     }, [isAuthenticated, user, router]);
+
+    // Fetch user trust score
+    useEffect(() => {
+        const fetchTrustScore = async () => {
+            if (user?.uid) {
+                try {
+                    const score = await twsmAPI.getUserTrustScore(user.uid);
+                    setTrustScore(score);
+                } catch (error) {
+                    console.error("Error fetching trust score:", error);
+                    // Set default trust score for new users
+                    setTrustScore({
+                        user_id: user.uid,
+                        trust_score: 0.5,
+                        total_reports: 0,
+                        verified_reports: 0,
+                        false_reports: 0,
+                        verification_ratio: 0,
+                        trust_trend: "stable"
+                    });
+                }
+            }
+        };
+        fetchTrustScore();
+    }, [user]);
 
     const handleSOSConfirm = () => {
         setShowSOSModal(false);
@@ -72,7 +110,31 @@ export default function Dashboard() {
                 onSOSClick={() => setShowSOSModal(true)}
                 alertCount={mockAlerts.length}
             />
-            <div className="flex-1 overflow-hidden">{renderContent()}</div>
+            <div className="flex-1 overflow-hidden flex flex-col">
+                {/* Trust Score Banner */}
+                {trustScore && (
+                    <div className="p-3 glass-dark border-b border-white/10 flex-shrink-0">
+                        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="text-xl">👤</div>
+                                <div>
+                                    <h3 className="text-xs font-semibold text-gray-300">Your Credibility Score</h3>
+                                    <p className="text-xs text-gray-500">Affects report priority</p>
+                                </div>
+                            </div>
+                            <TrustScoreBadge
+                                trustScore={trustScore.trust_score}
+                                totalReports={trustScore.total_reports}
+                                verifiedReports={trustScore.verified_reports}
+                                verificationRatio={trustScore.verification_ratio}
+                                trend={trustScore.trust_trend}
+                                showDetails={false}
+                            />
+                        </div>
+                    </div>
+                )}
+                <div className="flex-1 overflow-y-auto">{renderContent()}</div>
+            </div>
             <SOSModal
                 isOpen={showSOSModal}
                 onClose={() => setShowSOSModal(false)}
@@ -118,7 +180,7 @@ export default function Dashboard() {
                                     location has been shared with emergency responders.
                                 </p>
                             </div>
-                            
+
                             {/* Incident Type Selection */}
                             <div className="mb-4">
                                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -136,7 +198,7 @@ export default function Dashboard() {
                                     ))}
                                 </select>
                             </div>
-                            
+
                             <p className="text-gray-400 mb-4 text-sm">
                                 🤖 Our AI assistant will provide immediate safety guidance while help is on the way.
                             </p>

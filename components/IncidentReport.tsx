@@ -6,6 +6,9 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useAuth } from "@/context/AuthContext";
 import { createIncidentReport } from "@/lib/firestore";
+import SeverityPreviewComponent from "@/components/SeverityPreview";
+import EvidenceQualityIndicator from "@/components/EvidenceQualityIndicator";
+import { SeverityPreview } from "@/lib/api";
 
 const IncidentReport: React.FC = () => {
     const { user } = useAuth();
@@ -14,15 +17,27 @@ const IncidentReport: React.FC = () => {
         description: "",
         location: { lat: 28.6139, lng: 77.2090, address: "" } as Location,
         contactNumber: "",
+        evidenceType: "text" as "camera" | "image" | "text" | "none",
+        hasMetadata: false,
     });
     const [submitted, setSubmitted] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [mapInitialized, setMapInitialized] = useState(false);
+    const [severityPreview, setSeverityPreview] = useState<SeverityPreview | null>(null);
     const mapRef = useRef<HTMLDivElement>(null);
     const mapInstanceRef = useRef<L.Map | null>(null);
     const markerRef = useRef<L.Marker | null>(null);
     const circleRef = useRef<L.Circle | null>(null);
+
+    // Calculate evidence score based on type
+    const getEvidenceScore = (type: string, hasMetadata: boolean) => {
+        if (type === "camera" && hasMetadata) return 1.0;
+        if (type === "image" && hasMetadata) return 0.8;
+        if (type === "image") return 0.6;
+        if (type === "text") return 0.4;
+        return 0.0;
+    };
 
     useEffect(() => {
         if (!mapRef.current || mapInstanceRef.current) return;
@@ -233,6 +248,8 @@ const IncidentReport: React.FC = () => {
                         description: "",
                         location: { lat: 28.6139, lng: 77.2090, address: "" },
                         contactNumber: "",
+                        evidenceType: "text",
+                        hasMetadata: false,
                     });
                     if (mapInstanceRef.current && markerRef.current && circleRef.current) {
                         mapInstanceRef.current.setView([28.6139, 77.2090], 11);
@@ -308,6 +325,78 @@ const IncidentReport: React.FC = () => {
                                 className="w-full px-4 py-3 rounded-lg glass-dark border border-white/20 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all resize-none"
                                 placeholder="Provide as much detail as possible about the incident..."
                                 required
+                            />
+                        </div>
+
+                        {/* Real-time Severity Preview */}
+                        {formData.description && (
+                            <SeverityPreviewComponent
+                                description={formData.description}
+                                onSeverityCalculated={setSeverityPreview}
+                            />
+                        )}
+
+                        {/* Evidence Type Selection */}
+                        <div className="glass rounded-2xl p-6">
+                            <label className="block text-sm font-medium mb-3">
+                                Evidence Type
+                            </label>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, evidenceType: "camera", hasMetadata: true })}
+                                    className={`p-4 rounded-lg border-2 transition-all ${formData.evidenceType === "camera"
+                                        ? "border-blue-500 bg-blue-500/20"
+                                        : "border-white/20 glass-dark hover:border-white/40"
+                                        }`}
+                                >
+                                    <div className="text-3xl mb-2">📹</div>
+                                    <div className="text-sm font-medium">Live Camera</div>
+                                    <div className="text-xs text-gray-400">Best</div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, evidenceType: "image", hasMetadata: true })}
+                                    className={`p-4 rounded-lg border-2 transition-all ${formData.evidenceType === "image" && formData.hasMetadata
+                                        ? "border-blue-500 bg-blue-500/20"
+                                        : "border-white/20 glass-dark hover:border-white/40"
+                                        }`}
+                                >
+                                    <div className="text-3xl mb-2">📸</div>
+                                    <div className="text-sm font-medium">Photo + GPS</div>
+                                    <div className="text-xs text-gray-400">Good</div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, evidenceType: "image", hasMetadata: false })}
+                                    className={`p-4 rounded-lg border-2 transition-all ${formData.evidenceType === "image" && !formData.hasMetadata
+                                        ? "border-blue-500 bg-blue-500/20"
+                                        : "border-white/20 glass-dark hover:border-white/40"
+                                        }`}
+                                >
+                                    <div className="text-3xl mb-2">🖼️</div>
+                                    <div className="text-sm font-medium">Photo Only</div>
+                                    <div className="text-xs text-gray-400">Fair</div>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, evidenceType: "text", hasMetadata: false })}
+                                    className={`p-4 rounded-lg border-2 transition-all ${formData.evidenceType === "text"
+                                        ? "border-blue-500 bg-blue-500/20"
+                                        : "border-white/20 glass-dark hover:border-white/40"
+                                        }`}
+                                >
+                                    <div className="text-3xl mb-2">📝</div>
+                                    <div className="text-sm font-medium">Text Only</div>
+                                    <div className="text-xs text-gray-400">Basic</div>
+                                </button>
+                            </div>
+
+                            {/* Evidence Quality Indicator */}
+                            <EvidenceQualityIndicator
+                                evidenceType={formData.evidenceType}
+                                hasMetadata={formData.hasMetadata}
+                                score={getEvidenceScore(formData.evidenceType, formData.hasMetadata)}
                             />
                         </div>
 

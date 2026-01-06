@@ -44,12 +44,15 @@ const CrisisMap: React.FC = () => {
                                 position.coords.longitude,
                             ];
 
+                            // Update user location state for routing
+                            setUserLocation(userPos);
+
                             // Only add marker if map is still valid
                             if (map && mapRef.current) {
                                 L.marker(userPos, {
                                     icon: L.divIcon({
                                         html: '<div style="font-size: 30px;">📍</div>',
-                                        className: "user-marker",
+                                        className: "user-location-marker",
                                         iconSize: [30, 30],
                                         iconAnchor: [15, 30],
                                     }),
@@ -129,7 +132,13 @@ const CrisisMap: React.FC = () => {
     };
 
     const handleRouteSearch = async () => {
-        if (!searchDestination || !mapInstanceRef.current || !userLocation) return;
+        if (!searchDestination || !mapInstanceRef.current) return;
+
+        // Check if user location is available
+        if (!userLocation) {
+            alert("Please allow location access to find routes. Refresh the page and grant location permission.");
+            return;
+        }
 
         try {
             // Search for destination
